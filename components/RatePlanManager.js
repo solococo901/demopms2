@@ -8,14 +8,17 @@ import {
 import {
   Ban,
   BedDouble,
-  CalendarRange,
+  Building2,
+  CheckCircle2,
   CircleDollarSign,
-  Eye,
+  ConciergeBell,
+  Globe2,
   Link2,
   Pencil,
   Plus,
+  RadioTower,
   Search,
-  Wifi,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -24,19 +27,10 @@ import {
 
 import Modal from "@/components/Modal";
 
-import Drawer from "@/components/Drawer";
 
-
-const blankForm = {
-  propertyId: "",
-  roomTypeId: "",
-  name: "",
-  code: "",
-  baseRate: 0,
-  minimumStay: 1,
-  stopSell: false,
-};
-
+/* =====================================================
+   HELPERS
+===================================================== */
 
 function nowText() {
   return new Date().toLocaleString(
@@ -45,8 +39,10 @@ function nowText() {
 }
 
 
-function makeId() {
-  return `rateplan_${Date.now()}_${Math.random()
+function makeId(
+  prefix
+) {
+  return `${prefix}_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 8)}`;
 }
@@ -63,43 +59,249 @@ function money(
 }
 
 
-function StopSellBadge({
-  stopSell,
-}) {
-  return (
-    <span
-      className={`status-badge ${
-        stopSell
-          ? "status-danger"
-          : "status-success"
-      }`}
-    >
-      {stopSell
-        ? "Đang đóng bán"
-        : "Đang mở bán"}
-    </span>
-  );
+/* =====================================================
+   SALES CHANNEL
+
+   Existing Rate Plan chưa có salesChannel.
+   Ta infer để tương thích data cũ.
+
+   - WEB...       => Website Direct
+   - FRONT / FD   => Front Desk
+   - Có Channex   => OTA
+   - BAR/BB cũ    => OTA
+===================================================== */
+
+function getSalesChannel(
+  ratePlan
+) {
+  if (
+    ratePlan?.salesChannel
+  ) {
+    return ratePlan.salesChannel;
+  }
+
+
+  const code =
+    String(
+      ratePlan?.code ||
+      ""
+    ).toUpperCase();
+
+
+  if (
+    code.includes(
+      "WEB"
+    )
+  ) {
+    return "Website Direct";
+  }
+
+
+  if (
+    code.includes(
+      "FRONT"
+    ) ||
+    code.includes(
+      "WALK"
+    ) ||
+    code ===
+      "FD"
+  ) {
+    return "Front Desk";
+  }
+
+
+  if (
+    ratePlan?.mapped ||
+    ratePlan?.channexRatePlanId
+  ) {
+    return "OTA";
+  }
+
+
+  /*
+   * Data demo cũ chủ yếu là
+   * BAR / Room Only / Breakfast.
+   *
+   * Tạm xem là OTA cho tới khi
+   * người dùng Edit và chọn channel.
+   */
+  return "OTA";
 }
 
 
-function MappingBadge({
-  mapped,
-}) {
-  return (
-    <span
-      className={`status-badge ${
-        mapped
-          ? "status-info"
-          : "status-warning"
-      }`}
-    >
-      {mapped
-        ? "Đã mapping"
-        : "Chưa mapping"}
-    </span>
-  );
+/* =====================================================
+   RATE POLICY
+
+   Sales Channel = bán ở đâu.
+   Rate Policy   = bán theo điều kiện gì.
+===================================================== */
+
+function getRatePolicy(
+  ratePlan
+) {
+  if (
+    ratePlan?.ratePolicy
+  ) {
+    return ratePlan.ratePolicy;
+  }
+
+
+  const name =
+    String(
+      ratePlan?.name ||
+      ""
+    ).toLowerCase();
+
+
+  if (
+    name.includes(
+      "breakfast"
+    )
+  ) {
+    return "Breakfast Included";
+  }
+
+
+  if (
+    name.includes(
+      "room only"
+    )
+  ) {
+    return "Room Only";
+  }
+
+
+  if (
+    name.includes(
+      "non-refundable"
+    ) ||
+    name.includes(
+      "non refundable"
+    )
+  ) {
+    return "Non-refundable";
+  }
+
+
+  return "Flexible";
 }
 
+
+/* =====================================================
+   CHANNEL META
+===================================================== */
+
+function getChannelMeta(
+  channel
+) {
+  if (
+    channel ===
+    "Website Direct"
+  ) {
+    return {
+      label:
+        "Website Direct",
+
+      shortLabel:
+        "Website",
+
+      description:
+        "cityhousebooking.com",
+
+      badgeClass:
+        "status-success",
+
+      icon:
+        Globe2,
+    };
+  }
+
+
+  if (
+    channel ===
+    "Front Desk"
+  ) {
+    return {
+      label:
+        "Front Desk",
+
+      shortLabel:
+        "Front Desk",
+
+      description:
+        "Walk-in / Phone",
+
+      badgeClass:
+        "status-info",
+
+      icon:
+        ConciergeBell,
+    };
+  }
+
+
+  return {
+    label:
+      "OTA / Channex",
+
+    shortLabel:
+      "OTA",
+
+    description:
+      "Booking.com / Agoda / OTA",
+
+    badgeClass:
+      "status-warning",
+
+    icon:
+      RadioTower,
+  };
+}
+
+
+/* =====================================================
+   EMPTY FORM
+===================================================== */
+
+function createEmptyForm() {
+  return {
+    propertyId:
+      "",
+
+    roomTypeId:
+      "",
+
+    name:
+      "",
+
+    code:
+      "",
+
+    salesChannel:
+      "Website Direct",
+
+    ratePolicy:
+      "Room Only",
+
+    baseRate:
+      "",
+
+    minimumStay:
+      1,
+
+    stopSell:
+      false,
+
+    channexRatePlanId:
+      "",
+  };
+}
+
+
+/* =====================================================
+   MAIN
+===================================================== */
 
 export default function RatePlanManager() {
   const {
@@ -118,6 +320,16 @@ export default function RatePlanManager() {
   const ratePlans =
     data.ratePlans || [];
 
+  const rateCalendar =
+    data.rateCalendar || [];
+
+  const reservations =
+    data.reservations || [];
+
+
+  /* ===================================================
+     FILTER
+  =================================================== */
 
   const [
     search,
@@ -138,20 +350,24 @@ export default function RatePlanManager() {
 
 
   const [
-    sellFilter,
-    setSellFilter,
+    channelFilter,
+    setChannelFilter,
   ] = useState("");
 
 
   const [
-    mappingFilter,
-    setMappingFilter,
+    statusFilter,
+    setStatusFilter,
   ] = useState("");
 
 
+  /* ===================================================
+     MODAL
+  =================================================== */
+
   const [
-    formOpen,
-    setFormOpen,
+    modalOpen,
+    setModalOpen,
   ] = useState(false);
 
 
@@ -165,33 +381,13 @@ export default function RatePlanManager() {
     form,
     setForm,
   ] = useState(
-    blankForm
+    createEmptyForm()
   );
 
 
-  const [
-    detailId,
-    setDetailId,
-  ] = useState(null);
-
-
-  const [
-    mappingId,
-    setMappingId,
-  ] = useState(null);
-
-
-  const [
-    mappingValue,
-    setMappingValue,
-  ] = useState("");
-
-
-  const [
-    stopSellId,
-    setStopSellId,
-  ] = useState(null);
-
+  /* ===================================================
+     LOOKUP
+  =================================================== */
 
   function getProperty(
     propertyId
@@ -215,242 +411,227 @@ export default function RatePlanManager() {
   }
 
 
-  function getPropertyRoomTypes(
-    propertyId
-  ) {
-    return roomTypes.filter(
-      (roomType) =>
-        roomType.propertyId ===
-        propertyId
-    );
-  }
+  /* ===================================================
+     SUMMARY
+  =================================================== */
 
-
-  const filterRoomTypes =
-    useMemo(() => {
-      if (
-        !propertyFilter
-      ) {
-        return roomTypes;
-      }
-
-
-      return roomTypes.filter(
-        (roomType) =>
-          roomType.propertyId ===
-          propertyFilter
-      );
-    }, [
-      roomTypes,
-      propertyFilter,
-    ]);
-
-
-  const filtered =
-    useMemo(() => {
-      const q =
-        search
-          .trim()
-          .toLowerCase();
-
-
-      return ratePlans.filter(
-        (ratePlan) => {
-          const property =
-            getProperty(
-              ratePlan.propertyId
-            );
-
-
-          const roomType =
-            getRoomType(
-              ratePlan.roomTypeId
-            );
-
-
-          const text = `
-            ${ratePlan.name}
-            ${ratePlan.code}
-            ${property?.name || ""}
-            ${property?.code || ""}
-            ${roomType?.name || ""}
-            ${roomType?.code || ""}
-          `.toLowerCase();
-
-
-          const sellStatus =
-            ratePlan.stopSell
-              ? "StopSell"
-              : "Open";
-
-
-          const mappingStatus =
-            ratePlan.mapped
-              ? "Mapped"
-              : "NotMapped";
-
-
-          return (
-            (
-              !q ||
-              text.includes(q)
-            ) &&
-            (
-              !propertyFilter ||
-              ratePlan.propertyId ===
-                propertyFilter
-            ) &&
-            (
-              !roomTypeFilter ||
-              ratePlan.roomTypeId ===
-                roomTypeFilter
-            ) &&
-            (
-              !sellFilter ||
-              sellStatus ===
-                sellFilter
-            ) &&
-            (
-              !mappingFilter ||
-              mappingStatus ===
-                mappingFilter
-            )
-          );
-        }
-      );
-    }, [
-      ratePlans,
-      properties,
-      roomTypes,
-      search,
-      propertyFilter,
-      roomTypeFilter,
-      sellFilter,
-      mappingFilter,
-    ]);
-
-
-  const stats =
+  const summary =
     useMemo(
-      () => ({
-        total:
-          ratePlans.length,
+      () => {
+        return {
+          total:
+            ratePlans.length,
 
-        open:
-          ratePlans.filter(
-            (item) =>
-              !item.stopSell
-          ).length,
+          website:
+            ratePlans.filter(
+              (ratePlan) =>
+                getSalesChannel(
+                  ratePlan
+                ) ===
+                "Website Direct"
+            ).length,
 
-        stopSell:
-          ratePlans.filter(
-            (item) =>
-              item.stopSell
-          ).length,
+          ota:
+            ratePlans.filter(
+              (ratePlan) =>
+                getSalesChannel(
+                  ratePlan
+                ) ===
+                "OTA"
+            ).length,
 
-        mapped:
-          ratePlans.filter(
-            (item) =>
-              item.mapped
-          ).length,
-      }),
+          frontDesk:
+            ratePlans.filter(
+              (ratePlan) =>
+                getSalesChannel(
+                  ratePlan
+                ) ===
+                "Front Desk"
+            ).length,
+        };
+      },
       [
         ratePlans,
       ]
     );
 
 
-  function updateRatePlans(
-    nextRatePlans
-  ) {
-    setData(
-      (current) => ({
-        ...current,
+  /* ===================================================
+     FILTERED ROOM TYPE OPTIONS
+  =================================================== */
 
-        ratePlans:
-          nextRatePlans,
-      })
+  const filterRoomTypes =
+    useMemo(
+      () =>
+        roomTypes.filter(
+          (roomType) =>
+            !propertyFilter ||
+            roomType.propertyId ===
+              propertyFilter
+        ),
+      [
+        roomTypes,
+        propertyFilter,
+      ]
+    );
+
+
+  const formRoomTypes =
+    useMemo(
+      () =>
+        roomTypes.filter(
+          (roomType) =>
+            !form.propertyId ||
+            roomType.propertyId ===
+              form.propertyId
+        ),
+      [
+        roomTypes,
+        form.propertyId,
+      ]
+    );
+
+
+  /* ===================================================
+     FILTERED DATA
+  =================================================== */
+
+  const filteredRatePlans =
+    useMemo(
+      () => {
+        const q =
+          search
+            .trim()
+            .toLowerCase();
+
+
+        return ratePlans.filter(
+          (ratePlan) => {
+            const property =
+              properties.find(
+                (item) =>
+                  item.id ===
+                  ratePlan.propertyId
+              );
+
+
+            const roomType =
+              roomTypes.find(
+                (item) =>
+                  item.id ===
+                  ratePlan.roomTypeId
+              );
+
+
+            const channel =
+              getSalesChannel(
+                ratePlan
+              );
+
+
+            const searchMatch =
+              !q ||
+              [
+                ratePlan.name,
+                ratePlan.code,
+                property?.name,
+                roomType?.name,
+                channel,
+                getRatePolicy(
+                  ratePlan
+                ),
+                ratePlan.channexRatePlanId,
+              ]
+                .join(
+                  " "
+                )
+                .toLowerCase()
+                .includes(
+                  q
+                );
+
+
+            const propertyMatch =
+              !propertyFilter ||
+              ratePlan.propertyId ===
+                propertyFilter;
+
+
+            const roomTypeMatch =
+              !roomTypeFilter ||
+              ratePlan.roomTypeId ===
+                roomTypeFilter;
+
+
+            const channelMatch =
+              !channelFilter ||
+              channel ===
+                channelFilter;
+
+
+            const statusMatch =
+              !statusFilter ||
+              (
+                statusFilter ===
+                  "Open" &&
+                !ratePlan.stopSell
+              ) ||
+              (
+                statusFilter ===
+                  "Stop Sell" &&
+                Boolean(
+                  ratePlan.stopSell
+                )
+              );
+
+
+            return (
+              searchMatch &&
+              propertyMatch &&
+              roomTypeMatch &&
+              channelMatch &&
+              statusMatch
+            );
+          }
+        );
+      },
+      [
+        ratePlans,
+        properties,
+        roomTypes,
+        search,
+        propertyFilter,
+        roomTypeFilter,
+        channelFilter,
+        statusFilter,
+      ]
+    );
+
+
+  /* ===================================================
+     CREATE
+  =================================================== */
+
+  function openCreate() {
+    setEditingId(
+      null
+    );
+
+
+    setForm(
+      createEmptyForm()
+    );
+
+
+    setModalOpen(
+      true
     );
   }
 
 
-  function openCreate() {
-    if (
-      properties.length === 0
-    ) {
-      alert(
-        "Chưa có Property. Vui lòng hoàn thành Bước 01."
-      );
-
-      return;
-    }
-
-
-    if (
-      roomTypes.length === 0
-    ) {
-      alert(
-        "Chưa có Room Type. Vui lòng hoàn thành Bước 02."
-      );
-
-      return;
-    }
-
-
-    const property =
-      properties.find(
-        (item) =>
-          item.status ===
-          "Active"
-      ) ||
-      properties[0];
-
-
-    const availableRoomTypes =
-      getPropertyRoomTypes(
-        property.id
-      );
-
-
-    if (
-      availableRoomTypes.length ===
-      0
-    ) {
-      alert(
-        "Property này chưa có Room Type."
-      );
-
-      return;
-    }
-
-
-    const roomType =
-      availableRoomTypes[0];
-
-
-    setEditingId(null);
-
-
-    setForm({
-      ...blankForm,
-
-      propertyId:
-        property.id,
-
-      roomTypeId:
-        roomType.id,
-
-      baseRate:
-        Number(
-          roomType.baseRate ||
-            0
-        ),
-    });
-
-
-    setFormOpen(true);
-  }
-
+  /* ===================================================
+     EDIT
+  =================================================== */
 
   function openEdit(
     ratePlan
@@ -462,53 +643,87 @@ export default function RatePlanManager() {
 
     setForm({
       propertyId:
-        ratePlan.propertyId,
+        ratePlan.propertyId ||
+        "",
 
       roomTypeId:
-        ratePlan.roomTypeId,
+        ratePlan.roomTypeId ||
+        "",
 
       name:
-        ratePlan.name,
+        ratePlan.name ||
+        "",
 
       code:
-        ratePlan.code,
+        ratePlan.code ||
+        "",
+
+      salesChannel:
+        getSalesChannel(
+          ratePlan
+        ),
+
+      ratePolicy:
+        getRatePolicy(
+          ratePlan
+        ),
 
       baseRate:
-        Number(
-          ratePlan.baseRate ||
-            0
-        ),
+        ratePlan.baseRate ??
+        "",
 
       minimumStay:
-        Number(
-          ratePlan.minimumStay ||
-            1
-        ),
+        ratePlan.minimumStay ??
+        1,
 
       stopSell:
         Boolean(
           ratePlan.stopSell
         ),
+
+      channexRatePlanId:
+        ratePlan.channexRatePlanId ||
+        "",
     });
 
 
-    setFormOpen(true);
+    setModalOpen(
+      true
+    );
   }
 
+
+  /* ===================================================
+     CLOSE
+  =================================================== */
+
+  function closeModal() {
+    setModalOpen(
+      false
+    );
+
+
+    setEditingId(
+      null
+    );
+
+
+    setForm(
+      createEmptyForm()
+    );
+  }
+
+
+  /* ===================================================
+     CHANGE PROPERTY
+
+     Khi đổi Property => clear Room Type
+     để tránh chọn Room Type của khách sạn khác.
+  =================================================== */
 
   function handlePropertyChange(
     propertyId
   ) {
-    const availableRoomTypes =
-      getPropertyRoomTypes(
-        propertyId
-      );
-
-
-    const firstRoomType =
-      availableRoomTypes[0];
-
-
     setForm(
       (current) => ({
         ...current,
@@ -516,167 +731,139 @@ export default function RatePlanManager() {
         propertyId,
 
         roomTypeId:
-          firstRoomType?.id ||
           "",
-
-        baseRate:
-          Number(
-            firstRoomType
-              ?.baseRate ||
-              0
-          ),
       })
     );
   }
 
 
-  function handleRoomTypeChange(
-    roomTypeId
+  /* ===================================================
+     CHANGE SALES CHANNEL
+  =================================================== */
+
+  function handleSalesChannelChange(
+    salesChannel
   ) {
-    const roomType =
-      getRoomType(
-        roomTypeId
-      );
-
-
     setForm(
       (current) => ({
         ...current,
 
-        roomTypeId,
+        salesChannel,
 
-        baseRate:
-          Number(
-            roomType?.baseRate ||
-              current.baseRate ||
-              0
-          ),
+        /*
+         * Website / Front Desk
+         * không cần Channex Mapping.
+         */
+
+        channexRatePlanId:
+          salesChannel ===
+          "OTA"
+            ? current.channexRatePlanId
+            : "",
       })
     );
   }
 
 
+  /* ===================================================
+     SAVE
+  =================================================== */
+
   function saveRatePlan() {
-    const propertyId =
-      form.propertyId;
+    if (
+      !form.propertyId
+    ) {
+      alert(
+        "Vui lòng chọn Property."
+      );
 
-    const roomTypeId =
-      form.roomTypeId;
+      return;
+    }
 
-    const name =
-      form.name
-        .trim();
 
-    const code =
-      form.code
-        .trim()
-        .toUpperCase();
+    if (
+      !form.roomTypeId
+    ) {
+      alert(
+        "Vui lòng chọn Room Type."
+      );
 
-    const baseRate =
+      return;
+    }
+
+
+    if (
+      !form.name.trim()
+    ) {
+      alert(
+        "Vui lòng nhập tên Rate Plan."
+      );
+
+      return;
+    }
+
+
+    if (
+      !form.code.trim()
+    ) {
+      alert(
+        "Vui lòng nhập Code."
+      );
+
+      return;
+    }
+
+
+    if (
+      form.baseRate ===
+        "" ||
       Number(
-        form.baseRate ||
-          0
+        form.baseRate
+      ) <
+        0
+    ) {
+      alert(
+        "Base Rate không hợp lệ."
       );
 
-    const minimumStay =
+      return;
+    }
+
+
+    if (
       Number(
-        form.minimumStay ||
-          1
-      );
-
-
-    const property =
-      getProperty(
-        propertyId
-      );
-
-
-    const roomType =
-      getRoomType(
-        roomTypeId
-      );
-
-
-    if (
-      !property
+        form.minimumStay
+      ) <
+      1
     ) {
       alert(
-        "Property không hợp lệ."
+        "Minimum Stay phải từ 1 đêm."
       );
 
       return;
     }
 
 
-    if (
-      !roomType
-    ) {
-      alert(
-        "Room Type không hợp lệ."
-      );
-
-      return;
-    }
-
-
-    if (
-      roomType.propertyId !==
-      propertyId
-    ) {
-      alert(
-        "Room Type không thuộc Property đã chọn."
-      );
-
-      return;
-    }
-
-
-    if (
-      !name ||
-      !code
-    ) {
-      alert(
-        "Vui lòng nhập Tên Rate Plan và Mã Rate Plan."
-      );
-
-      return;
-    }
-
-
-    if (
-      baseRate < 0
-    ) {
-      alert(
-        "Base Rate không được nhỏ hơn 0."
-      );
-
-      return;
-    }
-
-
-    if (
-      minimumStay < 1
-    ) {
-      alert(
-        "Minimum Stay phải từ 1 đêm trở lên."
-      );
-
-      return;
-    }
-
+    /*
+     * Code không được trùng
+     * trong cùng Property + Room Type.
+     */
 
     const duplicate =
       ratePlans.some(
         (ratePlan) =>
-          ratePlan.propertyId ===
-            propertyId &&
-          ratePlan.roomTypeId ===
-            roomTypeId &&
-          ratePlan.code
-            .toUpperCase() ===
-            code &&
           ratePlan.id !==
-            editingId
+            editingId &&
+          ratePlan.propertyId ===
+            form.propertyId &&
+          ratePlan.roomTypeId ===
+            form.roomTypeId &&
+          String(
+            ratePlan.code
+          ).toUpperCase() ===
+            form.code
+              .trim()
+              .toUpperCase()
       );
 
 
@@ -684,314 +871,331 @@ export default function RatePlanManager() {
       duplicate
     ) {
       alert(
-        "Mã Rate Plan này đã tồn tại cho Room Type."
+        "Code này đã tồn tại trong Room Type đang chọn."
       );
 
       return;
     }
 
+
+    const actionTime =
+      nowText();
+
+
+    const isOta =
+      form.salesChannel ===
+      "OTA";
+
+
+    const channexId =
+      isOta
+        ? form.channexRatePlanId.trim()
+        : "";
+
+
+    const payload = {
+      propertyId:
+        form.propertyId,
+
+      roomTypeId:
+        form.roomTypeId,
+
+      name:
+        form.name.trim(),
+
+      code:
+        form.code
+          .trim()
+          .toUpperCase(),
+
+      /*
+       * FIELD MỚI
+       *
+       * Website Direct
+       * OTA
+       * Front Desk
+       */
+
+      salesChannel:
+        form.salesChannel,
+
+      /*
+       * FIELD MỚI
+       *
+       * Room Only
+       * Breakfast Included
+       * Flexible
+       * Non-refundable
+       */
+
+      ratePolicy:
+        form.ratePolicy,
+
+      baseRate:
+        Number(
+          form.baseRate
+        ),
+
+      minimumStay:
+        Number(
+          form.minimumStay ||
+          1
+        ),
+
+      stopSell:
+        Boolean(
+          form.stopSell
+        ),
+
+      /*
+       * Chỉ OTA mới mapping Channex.
+       */
+
+      channexRatePlanId:
+        channexId,
+
+      mapped:
+        Boolean(
+          isOta &&
+          channexId
+        ),
+
+      lastSync:
+        isOta &&
+        channexId
+          ? actionTime
+          : "",
+    };
+
+
+    /* ===============================================
+       UPDATE
+    =============================================== */
 
     if (
       editingId
     ) {
-      updateRatePlans(
-        ratePlans.map(
-          (ratePlan) =>
-            ratePlan.id ===
-            editingId
-              ? {
-                  ...ratePlan,
+      setData(
+        (current) => ({
+          ...current,
 
-                  ...form,
+          ratePlans:
+            (
+              current.ratePlans ||
+              []
+            ).map(
+              (ratePlan) =>
+                ratePlan.id ===
+                editingId
+                  ? {
+                      ...ratePlan,
 
-                  propertyId,
+                      ...payload,
 
-                  roomTypeId,
+                      updatedAt:
+                        actionTime,
 
-                  name,
+                      logs: [
+                        `${actionTime} — Đã cập nhật Rate Plan ${payload.code}`,
 
-                  code,
+                        `${actionTime} — Sales Channel: ${payload.salesChannel}`,
 
-                  baseRate,
-
-                  minimumStay,
-
-                  logs: [
-                    `${nowText()} — Đã cập nhật Rate Plan`,
-
-                    ...(
-                      ratePlan.logs ||
-                      []
-                    ),
-                  ],
-                }
-              : ratePlan
-        )
+                        ...(
+                          ratePlan.logs ||
+                          []
+                        ),
+                      ],
+                    }
+                  : ratePlan
+            ),
+        })
       );
-    } else {
-      updateRatePlans([
-        {
-          id:
-            makeId(),
 
-          ...form,
 
-          propertyId,
+      closeModal();
 
-          roomTypeId,
-
-          name,
-
-          code,
-
-          baseRate,
-
-          minimumStay,
-
-          channexRatePlanId:
-            "",
-
-          mapped:
-            false,
-
-          lastSync:
-            "",
-
-          logs: [
-            `${nowText()} — Đã tạo Rate Plan`,
-          ],
-        },
-
-        ...ratePlans,
-      ]);
+      return;
     }
 
 
-    setFormOpen(false);
+    /* ===============================================
+       CREATE
+    =============================================== */
+
+    const newRatePlan = {
+      id:
+        makeId(
+          "rateplan"
+        ),
+
+      ...payload,
+
+      createdAt:
+        actionTime,
+
+      updatedAt:
+        actionTime,
+
+      logs: [
+        `${actionTime} — Đã tạo Rate Plan`,
+
+        `${actionTime} — Sales Channel: ${payload.salesChannel}`,
+      ],
+    };
+
+
+    setData(
+      (current) => ({
+        ...current,
+
+        ratePlans: [
+          newRatePlan,
+
+          ...(
+            current.ratePlans ||
+            []
+          ),
+        ],
+      })
+    );
+
+
+    closeModal();
   }
 
 
-  function openMapping(
+  /* ===================================================
+     STOP SELL
+  =================================================== */
+
+  function toggleStopSell(
     ratePlan
   ) {
-    setMappingId(
-      ratePlan.id
-    );
-
-
-    setMappingValue(
-      ratePlan.channexRatePlanId ||
-        ""
-    );
-  }
-
-
-  function testMapping() {
-    if (
-      mappingValue
-        .trim()
-        .length < 8
-    ) {
-      alert(
-        "Channex Rate Plan ID chưa hợp lệ."
-      );
-
-      return;
-    }
-
-
-    updateRatePlans(
-      ratePlans.map(
-        (ratePlan) =>
-          ratePlan.id ===
-          mappingId
-            ? {
-                ...ratePlan,
-
-                lastSync:
-                  nowText(),
-
-                logs: [
-                  `${nowText()} — Kiểm tra Channex Rate Plan Mapping thành công`,
-
-                  ...(
-                    ratePlan.logs ||
-                    []
-                  ),
-                ],
-              }
-            : ratePlan
-      )
-    );
-  }
-
-
-  function saveMapping() {
-    if (
-      mappingValue
-        .trim()
-        .length < 8
-    ) {
-      alert(
-        "Vui lòng nhập Channex Rate Plan ID hợp lệ."
-      );
-
-      return;
-    }
-
-
-    updateRatePlans(
-      ratePlans.map(
-        (ratePlan) =>
-          ratePlan.id ===
-          mappingId
-            ? {
-                ...ratePlan,
-
-                channexRatePlanId:
-                  mappingValue
-                    .trim(),
-
-                mapped:
-                  true,
-
-                lastSync:
-                  nowText(),
-
-                logs: [
-                  `${nowText()} — Đã mapping Rate Plan với Channex`,
-
-                  ...(
-                    ratePlan.logs ||
-                    []
-                  ),
-                ],
-              }
-            : ratePlan
-      )
-    );
-  }
-
-
-  function removeMapping() {
-    updateRatePlans(
-      ratePlans.map(
-        (ratePlan) =>
-          ratePlan.id ===
-          mappingId
-            ? {
-                ...ratePlan,
-
-                channexRatePlanId:
-                  "",
-
-                mapped:
-                  false,
-
-                lastSync:
-                  nowText(),
-
-                logs: [
-                  `${nowText()} — Đã gỡ Channex Rate Plan Mapping`,
-
-                  ...(
-                    ratePlan.logs ||
-                    []
-                  ),
-                ],
-              }
-            : ratePlan
-      )
-    );
-
-
-    setMappingValue("");
-  }
-
-
-  function toggleStopSell() {
-    const ratePlan =
-      ratePlans.find(
-        (item) =>
-          item.id ===
-          stopSellId
-      );
-
-
-    if (
-      !ratePlan
-    ) {
-      return;
-    }
+    const actionTime =
+      nowText();
 
 
     const nextValue =
       !ratePlan.stopSell;
 
 
-    updateRatePlans(
-      ratePlans.map(
-        (item) =>
-          item.id ===
-          ratePlan.id
-            ? {
-                ...item,
+    setData(
+      (current) => ({
+        ...current,
 
-                stopSell:
-                  nextValue,
+        ratePlans:
+          (
+            current.ratePlans ||
+            []
+          ).map(
+            (item) =>
+              item.id ===
+                ratePlan.id
+                ? {
+                    ...item,
 
-                logs: [
-                  `${nowText()} — ${
-                    nextValue
-                      ? "Đã Stop Sell Rate Plan"
-                      : "Đã mở bán lại Rate Plan"
-                  }`,
+                    stopSell:
+                      nextValue,
 
-                  ...(
-                    item.logs ||
-                    []
-                  ),
-                ],
-              }
-            : item
-      )
+                    updatedAt:
+                      actionTime,
+
+                    logs: [
+                      `${actionTime} — ${
+                        nextValue
+                          ? "Đã Stop Sell"
+                          : "Đã mở bán lại"
+                      } Rate Plan`,
+
+                      ...(
+                        item.logs ||
+                        []
+                      ),
+                    ],
+                  }
+                : item
+          ),
+      })
     );
-
-
-    setStopSellId(null);
   }
 
 
-  const detailRatePlan =
-    ratePlans.find(
-      (item) =>
-        item.id ===
-        detailId
+  /* ===================================================
+     DELETE
+  =================================================== */
+
+  function deleteRatePlan(
+    ratePlan
+  ) {
+    const usedByReservation =
+      reservations.some(
+        (reservation) =>
+          reservation.ratePlanId ===
+          ratePlan.id
+      );
+
+
+    const usedByCalendar =
+      rateCalendar.some(
+        (calendar) =>
+          calendar.ratePlanId ===
+          ratePlan.id
+      );
+
+
+    if (
+      usedByReservation ||
+      usedByCalendar
+    ) {
+      alert(
+        "Rate Plan này đang được Reservation hoặc Rate Calendar sử dụng. Không nên xóa. Hãy dùng Stop Sell để ngừng bán."
+      );
+
+      return;
+    }
+
+
+    const accepted =
+      window.confirm(
+        `Xóa Rate Plan "${ratePlan.name}"?`
+      );
+
+
+    if (
+      !accepted
+    ) {
+      return;
+    }
+
+
+    setData(
+      (current) => ({
+        ...current,
+
+        ratePlans:
+          (
+            current.ratePlans ||
+            []
+          ).filter(
+            (item) =>
+              item.id !==
+              ratePlan.id
+          ),
+      })
     );
+  }
 
 
-  const mappingRatePlan =
-    ratePlans.find(
-      (item) =>
-        item.id ===
-        mappingId
-    );
-
-
-  const stopSellRatePlan =
-    ratePlans.find(
-      (item) =>
-        item.id ===
-        stopSellId
-    );
-
+  /* ===================================================
+     LOADING
+  =================================================== */
 
   if (
     !ready
   ) {
     return (
       <div className="panel loading-panel">
-        Đang tải dữ liệu PMS...
+        Đang tải Chính sách giá...
       </div>
     );
   }
@@ -999,25 +1203,30 @@ export default function RatePlanManager() {
 
   return (
     <>
+      {/* =================================================
+          HEADER
+      ================================================= */}
+
       <div className="page-header">
 
         <div>
 
           <div className="eyebrow">
-            BƯỚC 04 — CHÍNH SÁCH GIÁ
+            BƯỚC 04 — RATE MANAGEMENT
           </div>
 
+
           <h1>
-            Quản lý chính sách giá{" "}
+            Chính sách giá{" "}
             <span className="heading-en">
-              (Rate Plan)
+              / Rate Plan
             </span>
           </h1>
 
+
           <p>
-            Tạo các gói giá bán cho từng loại phòng,
-            thiết lập Base Rate, Minimum Stay,
-            Stop Sell và mapping Rate Plan với Channex.
+            Quản lý giá theo từng Room Type và từng kênh bán:
+            Website Direct, OTA / Channex và Front Desk.
           </p>
 
         </div>
@@ -1025,62 +1234,79 @@ export default function RatePlanManager() {
 
         <button
           className="button button-dark button-lg"
+
           onClick={
             openCreate
           }
         >
-          <Plus size={17} />
+          <Plus
+            size={17}
+          />
 
-          Thêm Rate Plan
+          Tạo chính sách giá
         </button>
 
       </div>
 
 
+      {/* =================================================
+          EXPLAIN
+      ================================================= */}
+
       <section className="explain-card">
 
         <div className="explain-icon">
+
           <CircleDollarSign
             size={21}
           />
+
         </div>
 
 
         <div>
 
           <strong>
-            Rate Plan là cách một Room Type được bán
+            Một Room Type có thể có giá khác nhau theo từng kênh bán
           </strong>
 
+
           <p>
-            Cùng một loại phòng Deluxe có thể có nhiều
-            chính sách giá khác nhau như BAR,
-            Room Only hoặc Breakfast Included.
+            Ví dụ cùng một phòng Studio, Website CITYHOUSE có thể
+            bán 1.150.000đ, Front Desk 1.200.000đ và OTA
+            1.250.000đ. Giá thực tế từng ngày tiếp tục được
+            quản lý ở Rate Calendar.
           </p>
 
 
-          <div className="roomtype-flow">
+          <div className="rate-plan-flow">
 
             <span>
-              Deluxe
+              Room Type
             </span>
 
             <b>→</b>
 
             <span>
-              BAR
+              Rate Plan
             </span>
 
             <b>→</b>
 
             <span>
-              Base Rate
+              Sales Channel
             </span>
 
             <b>→</b>
 
             <span>
               Rate Calendar
+            </span>
+
+            <b>→</b>
+
+            <span>
+              Website / Channex / Front Desk
             </span>
 
           </div>
@@ -1090,38 +1316,132 @@ export default function RatePlanManager() {
       </section>
 
 
+      {/* =================================================
+          METRICS
+      ================================================= */}
+
       <div className="metric-grid">
 
         <Metric
-          label="Tổng Rate Plan"
+          label="Rate Plans"
+
           value={
-            stats.total
+            summary.total
           }
         />
 
+
         <Metric
-          label="Đang mở bán"
+          label="Website Direct"
+
           value={
-            stats.open
+            summary.website
           }
         />
 
+
         <Metric
-          label="Đang Stop Sell"
+          label="OTA / Channex"
+
           value={
-            stats.stopSell
+            summary.ota
           }
         />
 
+
         <Metric
-          label="Đã mapping Channex"
+          label="Front Desk"
+
           value={
-            stats.mapped
+            summary.frontDesk
           }
         />
 
       </div>
 
+
+      {/* =================================================
+          CHANNEL STRATEGY
+      ================================================= */}
+
+      <section className="panel business-panel">
+
+        <div className="eyebrow">
+          SALES CHANNEL STRATEGY
+        </div>
+
+
+        <h2>
+          Giá theo từng kênh bán
+        </h2>
+
+
+        <div className="rate-plan-summary">
+
+          <ChannelCard
+            icon={
+              <Globe2
+                size={18}
+              />
+            }
+
+            title="Website Direct"
+
+            code="WEB-DIRECT"
+
+            description="Giá bán trực tiếp trên cityhousebooking.com. Không bắt buộc đi qua Channex."
+
+            example="Ví dụ: 1.150.000 ₫"
+
+            status={`${summary.website} Rate Plan`}
+          />
+
+
+          <ChannelCard
+            icon={
+              <RadioTower
+                size={18}
+              />
+            }
+
+            title="OTA / Channex"
+
+            code="OTA-BAR"
+
+            description="Giá phân phối qua Channex đến Booking.com, Agoda và các OTA."
+
+            example="Ví dụ: 1.250.000 ₫"
+
+            status={`${summary.ota} Rate Plan`}
+          />
+
+
+          <ChannelCard
+            icon={
+              <ConciergeBell
+                size={18}
+              />
+            }
+
+            title="Front Desk"
+
+            code="FRONT-DESK"
+
+            description="Giá dành cho Walk-in, Phone Booking hoặc nhân viên Reservation tạo trực tiếp."
+
+            example="Ví dụ: 1.200.000 ₫"
+
+            status={`${summary.frontDesk} Rate Plan`}
+          />
+
+        </div>
+
+      </section>
+
+
+      {/* =================================================
+          FILTER
+      ================================================= */}
 
       <section className="panel">
 
@@ -1131,19 +1451,24 @@ export default function RatePlanManager() {
 
             <label className="search-box">
 
-              <Search size={16} />
+              <Search
+                size={16}
+              />
+
 
               <input
                 value={
                   search
                 }
+
                 onChange={
                   (event) =>
                     setSearch(
                       event.target.value
                     )
                 }
-                placeholder="Tìm tên hoặc mã Rate Plan..."
+
+                placeholder="Tìm Rate Plan, code, channel..."
               />
 
             </label>
@@ -1153,6 +1478,7 @@ export default function RatePlanManager() {
               value={
                 propertyFilter
               }
+
               onChange={
                 (event) => {
                   setPropertyFilter(
@@ -1165,9 +1491,8 @@ export default function RatePlanManager() {
                 }
               }
             >
-
               <option value="">
-                Tất cả khách sạn
+                Tất cả Property
               </option>
 
 
@@ -1179,6 +1504,7 @@ export default function RatePlanManager() {
                       key={
                         property.id
                       }
+
                       value={
                         property.id
                       }
@@ -1199,6 +1525,7 @@ export default function RatePlanManager() {
               value={
                 roomTypeFilter
               }
+
               onChange={
                 (event) =>
                   setRoomTypeFilter(
@@ -1206,7 +1533,6 @@ export default function RatePlanManager() {
                   )
               }
             >
-
               <option value="">
                 Tất cả Room Type
               </option>
@@ -1220,6 +1546,7 @@ export default function RatePlanManager() {
                       key={
                         roomType.id
                       }
+
                       value={
                         roomType.id
                       }
@@ -1238,26 +1565,30 @@ export default function RatePlanManager() {
 
             <select
               value={
-                sellFilter
+                channelFilter
               }
+
               onChange={
                 (event) =>
-                  setSellFilter(
+                  setChannelFilter(
                     event.target.value
                   )
               }
             >
-
               <option value="">
-                Tất cả trạng thái bán
+                Tất cả kênh bán
               </option>
 
-              <option value="Open">
-                Đang mở bán
+              <option value="Website Direct">
+                Website Direct
               </option>
 
-              <option value="StopSell">
-                Stop Sell
+              <option value="OTA">
+                OTA / Channex
+              </option>
+
+              <option value="Front Desk">
+                Front Desk
               </option>
 
             </select>
@@ -1265,26 +1596,26 @@ export default function RatePlanManager() {
 
             <select
               value={
-                mappingFilter
+                statusFilter
               }
+
               onChange={
                 (event) =>
-                  setMappingFilter(
+                  setStatusFilter(
                     event.target.value
                   )
               }
             >
-
               <option value="">
-                Tất cả mapping
+                Tất cả trạng thái
               </option>
 
-              <option value="Mapped">
-                Đã mapping
+              <option value="Open">
+                Open
               </option>
 
-              <option value="NotMapped">
-                Chưa mapping
+              <option value="Stop Sell">
+                Stop Sell
               </option>
 
             </select>
@@ -1294,376 +1625,554 @@ export default function RatePlanManager() {
         </div>
 
 
-        <div className="table-wrap">
+        {/* =================================================
+            TABLE
+        ================================================= */}
 
-          <table className="data-table rate-plan-table">
+        {
+          filteredRatePlans.length >
+            0
+            ? (
+              <div className="table-wrap">
 
-            <thead>
+                <table className="data-table rate-plan-table">
 
-              <tr>
+                  <thead>
 
-                <th>
-                  Rate Plan
-                </th>
+                    <tr>
 
-                <th>
-                  Khách sạn
-                </th>
+                      <th>
+                        Rate Plan
+                      </th>
 
-                <th>
-                  Room Type
-                </th>
+                      <th>
+                        Property / Room
+                      </th>
 
-                <th>
-                  Base Rate
-                </th>
+                      <th>
+                        Sales Channel
+                      </th>
 
-                <th>
-                  Minimum Stay
-                </th>
+                      <th>
+                        Rate Policy
+                      </th>
 
-                <th>
-                  Trạng thái bán
-                </th>
+                      <th className="text-right">
+                        Base Rate
+                      </th>
 
-                <th>
-                  Channex
-                </th>
+                      <th>
+                        Min Stay
+                      </th>
 
-                <th className="text-right">
-                  Thao tác
-                </th>
+                      <th>
+                        Sales Status
+                      </th>
 
-              </tr>
+                      <th>
+                        Channex
+                      </th>
 
-            </thead>
+                      <th className="text-right">
+                        Thao tác
+                      </th>
 
+                    </tr>
 
-            <tbody>
-
-              {
-                filtered.map(
-                  (ratePlan) => {
-                    const property =
-                      getProperty(
-                        ratePlan.propertyId
-                      );
-
-
-                    const roomType =
-                      getRoomType(
-                        ratePlan.roomTypeId
-                      );
+                  </thead>
 
 
-                    return (
-                      <tr
-                        key={
-                          ratePlan.id
+                  <tbody>
+
+                    {
+                      filteredRatePlans.map(
+                        (ratePlan) => {
+
+                          const property =
+                            getProperty(
+                              ratePlan.propertyId
+                            );
+
+
+                          const roomType =
+                            getRoomType(
+                              ratePlan.roomTypeId
+                            );
+
+
+                          const channel =
+                            getSalesChannel(
+                              ratePlan
+                            );
+
+
+                          const channelMeta =
+                            getChannelMeta(
+                              channel
+                            );
+
+
+                          const ChannelIcon =
+                            channelMeta.icon;
+
+
+                          return (
+                            <tr
+                              key={
+                                ratePlan.id
+                              }
+                            >
+
+                              {/* RATE PLAN */}
+
+                              <td>
+
+                                <strong>
+                                  {
+                                    ratePlan.name
+                                  }
+                                </strong>
+
+
+                                <div className="small-copy muted code">
+                                  {
+                                    ratePlan.code
+                                  }
+                                </div>
+
+                              </td>
+
+
+                              {/* PROPERTY / ROOM */}
+
+                              <td>
+
+                                <strong className="table-secondary-title">
+                                  {
+                                    property?.name ||
+                                    "—"
+                                  }
+                                </strong>
+
+
+                                <div className="small-copy muted">
+                                  {
+                                    roomType?.name ||
+                                    "—"
+                                  }
+                                </div>
+
+                              </td>
+
+
+                              {/* CHANNEL */}
+
+                              <td>
+
+                                <span
+                                  className={`status-badge ${channelMeta.badgeClass}`}
+                                >
+                                  <ChannelIcon
+                                    size={12}
+                                  />
+
+                                  {
+                                    channelMeta.shortLabel
+                                  }
+                                </span>
+
+
+                                <div className="small-copy muted">
+                                  {
+                                    channelMeta.description
+                                  }
+                                </div>
+
+                              </td>
+
+
+                              {/* POLICY */}
+
+                              <td>
+
+                                <strong>
+                                  {
+                                    getRatePolicy(
+                                      ratePlan
+                                    )
+                                  }
+                                </strong>
+
+                              </td>
+
+
+                              {/* BASE RATE */}
+
+                              <td className="text-right">
+
+                                <strong>
+                                  {
+                                    money(
+                                      ratePlan.baseRate
+                                    )
+                                  }
+                                </strong>
+
+                              </td>
+
+
+                              {/* MIN STAY */}
+
+                              <td>
+
+                                <span className="status-badge status-neutral">
+                                  {
+                                    ratePlan.minimumStay ||
+                                    1
+                                  }{" "}
+                                  đêm
+                                </span>
+
+                              </td>
+
+
+                              {/* SALES STATUS */}
+
+                              <td>
+
+                                {
+                                  ratePlan.stopSell
+                                    ? (
+                                      <span className="status-badge status-danger">
+                                        <Ban
+                                          size={12}
+                                        />
+
+                                        Stop Sell
+                                      </span>
+                                    )
+                                    : (
+                                      <span className="status-badge status-success">
+                                        <CheckCircle2
+                                          size={12}
+                                        />
+
+                                        Open
+                                      </span>
+                                    )
+                                }
+
+                              </td>
+
+
+                              {/* CHANNEX */}
+
+                              <td>
+
+                                {
+                                  channel ===
+                                  "OTA"
+                                    ? (
+                                      ratePlan.mapped &&
+                                      ratePlan.channexRatePlanId
+                                        ? (
+                                          <>
+
+                                            <span className="status-badge status-success">
+                                              <Link2
+                                                size={12}
+                                              />
+
+                                              Mapped
+                                            </span>
+
+
+                                            <div className="small-copy muted code">
+                                              {
+                                                ratePlan.channexRatePlanId
+                                              }
+                                            </div>
+
+                                          </>
+                                        )
+                                        : (
+                                          <span className="status-badge status-warning">
+                                            Not mapped
+                                          </span>
+                                        )
+                                    )
+                                    : (
+                                      <span className="status-badge status-neutral">
+                                        Internal
+                                      </span>
+                                    )
+                                }
+
+                              </td>
+
+
+                              {/* ACTION */}
+
+                              <td>
+
+                                <div className="action-row">
+
+                                  <button
+                                    className="button button-light button-sm"
+
+                                    onClick={
+                                      () =>
+                                        toggleStopSell(
+                                          ratePlan
+                                        )
+                                    }
+                                  >
+                                    {
+                                      ratePlan.stopSell
+                                        ? "Open"
+                                        : "Stop"
+                                    }
+                                  </button>
+
+
+                                  <button
+                                    className="table-action"
+
+                                    title="Chỉnh sửa"
+
+                                    onClick={
+                                      () =>
+                                        openEdit(
+                                          ratePlan
+                                        )
+                                    }
+                                  >
+                                    <Pencil
+                                      size={14}
+                                    />
+                                  </button>
+
+
+                                  <button
+                                    className="table-action danger"
+
+                                    title="Xóa"
+
+                                    onClick={
+                                      () =>
+                                        deleteRatePlan(
+                                          ratePlan
+                                        )
+                                    }
+                                  >
+                                    <Trash2
+                                      size={14}
+                                    />
+                                  </button>
+
+                                </div>
+
+                              </td>
+
+                            </tr>
+                          );
                         }
-                      >
+                      )
+                    }
 
-                        <td>
+                  </tbody>
 
-                          <strong>
-                            {
-                              ratePlan.name
-                            }
-                          </strong>
+                </table>
 
-                          <div className="code muted">
-                            {
-                              ratePlan.code
-                            }
-                          </div>
-
-                        </td>
-
-
-                        <td>
-
-                          <strong className="table-secondary-title">
-                            {
-                              property?.name ||
-                              "—"
-                            }
-                          </strong>
-
-                          <div className="code muted">
-                            {
-                              property?.code ||
-                              "—"
-                            }
-                          </div>
-
-                        </td>
-
-
-                        <td>
-
-                          <strong>
-                            {
-                              roomType?.name ||
-                              "—"
-                            }
-                          </strong>
-
-                          <div className="code muted">
-                            {
-                              roomType?.code ||
-                              "—"
-                            }
-                          </div>
-
-                        </td>
-
-
-                        <td>
-                          {
-                            money(
-                              ratePlan.baseRate
-                            )
-                          }
-                        </td>
-
-
-                        <td>
-                          {
-                            ratePlan.minimumStay
-                          }{" "}
-                          đêm
-                        </td>
-
-
-                        <td>
-
-                          <StopSellBadge
-                            stopSell={
-                              ratePlan.stopSell
-                            }
-                          />
-
-                        </td>
-
-
-                        <td>
-
-                          <MappingBadge
-                            mapped={
-                              ratePlan.mapped
-                            }
-                          />
-
-                        </td>
-
-
-                        <td>
-
-                          <div className="action-row">
-
-                            <ActionButton
-                              title="Xem chi tiết"
-                              onClick={
-                                () =>
-                                  setDetailId(
-                                    ratePlan.id
-                                  )
-                              }
-                            >
-                              <Eye
-                                size={15}
-                              />
-                            </ActionButton>
-
-
-                            <ActionButton
-                              title="Chỉnh sửa"
-                              onClick={
-                                () =>
-                                  openEdit(
-                                    ratePlan
-                                  )
-                              }
-                            >
-                              <Pencil
-                                size={15}
-                              />
-                            </ActionButton>
-
-
-                            <ActionButton
-                              title="Channex Mapping"
-                              onClick={
-                                () =>
-                                  openMapping(
-                                    ratePlan
-                                  )
-                              }
-                            >
-                              <Link2
-                                size={15}
-                              />
-                            </ActionButton>
-
-
-                            <ActionButton
-                              title={
-                                ratePlan.stopSell
-                                  ? "Mở bán lại"
-                                  : "Stop Sell"
-                              }
-                              onClick={
-                                () =>
-                                  setStopSellId(
-                                    ratePlan.id
-                                  )
-                              }
-                            >
-                              <Ban
-                                size={15}
-                              />
-                            </ActionButton>
-
-                          </div>
-
-                        </td>
-
-                      </tr>
-                    );
-                  }
-                )
-              }
-
-            </tbody>
-
-          </table>
-
-
-          {
-            filtered.length ===
-              0 && (
-
+              </div>
+            )
+            : (
               <div className="empty-state">
 
                 <CircleDollarSign
                   size={38}
                 />
 
+
                 <strong>
-                  Chưa có Rate Plan phù hợp
+                  Không tìm thấy Rate Plan
                 </strong>
 
+
                 <span>
-                  Hãy thêm Rate Plan hoặc thay đổi bộ lọc.
+                  Thử thay đổi bộ lọc hoặc tạo chính sách giá mới.
                 </span>
 
               </div>
-
             )
-          }
-
-        </div>
+        }
 
       </section>
 
 
+      {/* =================================================
+          BUSINESS EXPLANATION
+      ================================================= */}
+
       <section className="panel business-panel">
 
         <div className="eyebrow">
-          MÔ TẢ NGHIỆP VỤ
+          RATE ARCHITECTURE
         </div>
 
+
         <h2>
-          Rate Plan được sử dụng như thế nào?
+          Phân biệt Channel và Rate Policy
         </h2>
 
 
         <div className="business-grid">
 
-          <BusinessItem
-            number="01"
-            icon={
+          <div className="business-item">
+
+            <div className="business-item-top">
+
+              <span>
+                01
+              </span>
+
+              <Globe2
+                size={16}
+              />
+
+            </div>
+
+
+            <h3>
+              Sales Channel
+            </h3>
+
+
+            <p>
+              Xác định giá được bán ở đâu:
+              Website, OTA hay Front Desk.
+            </p>
+
+          </div>
+
+
+          <div className="business-item">
+
+            <div className="business-item-top">
+
+              <span>
+                02
+              </span>
+
               <BedDouble
-                size={18}
+                size={16}
               />
-            }
-            title="Gắn với Room Type"
-            text="Mỗi Rate Plan được tạo cho một Room Type cụ thể như Deluxe hoặc Studio."
-          />
+
+            </div>
 
 
-          <BusinessItem
-            number="02"
-            icon={
+            <h3>
+              Rate Policy
+            </h3>
+
+
+            <p>
+              Xác định gói giá: Room Only,
+              Breakfast, Flexible hoặc Non-refundable.
+            </p>
+
+          </div>
+
+
+          <div className="business-item">
+
+            <div className="business-item-top">
+
+              <span>
+                03
+              </span>
+
               <CircleDollarSign
-                size={18}
+                size={16}
               />
-            }
-            title="Base Rate"
-            text="Thiết lập mức giá cơ sở dùng làm giá mặc định của Rate Plan."
-          />
+
+            </div>
 
 
-          <BusinessItem
-            number="03"
-            icon={
-              <CalendarRange
-                size={18}
+            <h3>
+              Base Rate
+            </h3>
+
+
+            <p>
+              Giá nền của chính sách.
+              Rate Calendar có thể override theo từng ngày.
+            </p>
+
+          </div>
+
+
+          <div className="business-item">
+
+            <div className="business-item-top">
+
+              <span>
+                04
+              </span>
+
+              <RadioTower
+                size={16}
               />
-            }
-            title="Minimum Stay"
-            text="Quy định số đêm tối thiểu khách phải đặt với Rate Plan."
-          />
+
+            </div>
 
 
-          <BusinessItem
-            number="04"
-            icon={
-              <Wifi
-                size={18}
-              />
-            }
-            title="Stop Sell & Channex"
-            text="Có thể đóng bán Rate Plan và mapping với Rate Plan tương ứng trên Channex."
-          />
+            <h3>
+              Distribution
+            </h3>
+
+
+            <p>
+              Chỉ Rate Plan OTA cần mapping
+              Channex để phân phối ra OTA.
+            </p>
+
+          </div>
 
         </div>
 
       </section>
 
 
+      {/* =================================================
+          MODAL
+      ================================================= */}
+
       <Modal
         open={
-          formOpen
+          modalOpen
         }
 
         title={
           editingId
-            ? "Chỉnh sửa Rate Plan"
-            : "Thêm Rate Plan"
+            ? "Chỉnh sửa chính sách giá"
+            : "Tạo chính sách giá"
         }
 
-        subtitle={
-          editingId
-            ? "CHỈNH SỬA CHÍNH SÁCH GIÁ"
-            : "TẠO CHÍNH SÁCH GIÁ"
-        }
+        subtitle="RATE PLAN"
 
         onClose={
-          () =>
-            setFormOpen(false)
+          closeModal
         }
-
-        size="lg"
 
         footer={
           <>
 
             <button
               className="button button-light"
+
               onClick={
-                () =>
-                  setFormOpen(false)
+                closeModal
               }
             >
               Hủy
@@ -1672,664 +2181,387 @@ export default function RatePlanManager() {
 
             <button
               className="button button-dark"
+
               onClick={
                 saveRatePlan
               }
             >
-              Lưu Rate Plan
+              {
+                editingId
+                  ? "Lưu thay đổi"
+                  : "Tạo Rate Plan"
+              }
             </button>
 
           </>
         }
       >
 
-        <RatePlanForm
-          form={
-            form
-          }
+        {/* ===============================================
+            PROPERTY / ROOM TYPE
+        =============================================== */}
 
-          setForm={
-            setForm
-          }
+        <div className="form-section-title">
+          Room Information
+        </div>
 
-          properties={
-            properties
-          }
 
-          roomTypes={
-            roomTypes
-          }
+        <div className="form-grid">
 
-          editing={
-            Boolean(
-              editingId
-            )
-          }
+          <label className="form-field">
 
-          onPropertyChange={
-            handlePropertyChange
-          }
+            <span className="form-label">
+              Property *
+            </span>
 
-          onRoomTypeChange={
-            handleRoomTypeChange
-          }
-        />
 
-      </Modal>
-
-
-      <Drawer
-        open={
-          Boolean(
-            detailRatePlan
-          )
-        }
-
-        title={
-          detailRatePlan?.name ||
-          ""
-        }
-
-        subtitle="CHI TIẾT RATE PLAN"
-
-        onClose={
-          () =>
-            setDetailId(null)
-        }
-      >
-
-        {
-          detailRatePlan && (
-
-            <RatePlanDetail
-              ratePlan={
-                detailRatePlan
-              }
-
-              property={
-                getProperty(
-                  detailRatePlan.propertyId
-                )
-              }
-
-              roomType={
-                getRoomType(
-                  detailRatePlan.roomTypeId
-                )
-              }
-
-              onEdit={
-                () => {
-                  setDetailId(
-                    null
-                  );
-
-                  openEdit(
-                    detailRatePlan
-                  );
-                }
-              }
-
-              onMapping={
-                () => {
-                  setDetailId(
-                    null
-                  );
-
-                  openMapping(
-                    detailRatePlan
-                  );
-                }
-              }
-            />
-
-          )
-        }
-
-      </Drawer>
-
-
-      <Modal
-        open={
-          Boolean(
-            mappingRatePlan
-          )
-        }
-
-        title="Mapping Rate Plan với Channex"
-
-        subtitle="CHANNEX RATE PLAN MAPPING"
-
-        onClose={
-          () =>
-            setMappingId(null)
-        }
-
-        footer={
-          <>
-
-            <button
-              className="button button-danger-outline"
-              onClick={
-                removeMapping
-              }
-            >
-              Gỡ mapping
-            </button>
-
-
-            <div className="footer-actions">
-
-              <button
-                className="button button-light"
-                onClick={
-                  testMapping
-                }
-              >
-                Kiểm tra
-              </button>
-
-
-              <button
-                className="button button-dark"
-                onClick={
-                  saveMapping
-                }
-              >
-                Lưu mapping
-              </button>
-
-            </div>
-
-          </>
-        }
-      >
-
-        {
-          mappingRatePlan && (
-
-            <RatePlanMapping
-              ratePlan={
-                mappingRatePlan
-              }
-
-              property={
-                getProperty(
-                  mappingRatePlan.propertyId
-                )
-              }
-
-              roomType={
-                getRoomType(
-                  mappingRatePlan.roomTypeId
-                )
-              }
-
-              mappingValue={
-                mappingValue
-              }
-
-              setMappingValue={
-                setMappingValue
-              }
-            />
-
-          )
-        }
-
-      </Modal>
-
-
-      <Modal
-        open={
-          Boolean(
-            stopSellRatePlan
-          )
-        }
-
-        title={
-          stopSellRatePlan?.stopSell
-            ? "Mở bán Rate Plan"
-            : "Stop Sell Rate Plan"
-        }
-
-        onClose={
-          () =>
-            setStopSellId(null)
-        }
-
-        footer={
-          <>
-
-            <button
-              className="button button-light"
-              onClick={
-                () =>
-                  setStopSellId(null)
-              }
-            >
-              Hủy
-            </button>
-
-
-            <button
-              className="button button-dark"
-              onClick={
-                toggleStopSell
-              }
-            >
-              Xác nhận
-            </button>
-
-          </>
-        }
-      >
-
-        {
-          stopSellRatePlan && (
-
-            <div className="confirm-copy">
-
-              Rate Plan{" "}
-
-              <strong>
-                {
-                  stopSellRatePlan.name
-                }
-              </strong>
-
-              {" "}
-              sẽ chuyển sang{" "}
-
-              <strong>
-
-                {
-                  stopSellRatePlan.stopSell
-                    ? "Đang mở bán"
-                    : "Stop Sell"
-                }
-
-              </strong>
-
-              .
-
-
-              <div className="info-note status-note">
-
-                Stop Sell dùng để ngừng bán Rate Plan khi cần.
-                Ở Bước 05, hệ thống sẽ hỗ trợ Stop Sell theo
-                từng ngày trong Rate Calendar.
-
-              </div>
-
-            </div>
-
-          )
-        }
-
-      </Modal>
-
-    </>
-  );
-}
-
-
-function Metric({
-  label,
-  value,
-}) {
-  return (
-    <div className="metric-card">
-
-      <div className="metric-label">
-        {label}
-      </div>
-
-      <div className="metric-value">
-        {value}
-      </div>
-
-    </div>
-  );
-}
-
-
-function ActionButton({
-  title,
-  children,
-  onClick,
-}) {
-  return (
-    <button
-      className="table-action"
-      title={
-        title
-      }
-      onClick={
-        onClick
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
-
-function BusinessItem({
-  number,
-  icon,
-  title,
-  text,
-}) {
-  return (
-    <article className="business-item">
-
-      <div className="business-item-top">
-
-        <span>
-          {number}
-        </span>
-
-        {icon}
-
-      </div>
-
-      <h3>
-        {title}
-      </h3>
-
-      <p>
-        {text}
-      </p>
-
-    </article>
-  );
-}
-
-
-function Field({
-  label,
-  help,
-  children,
-}) {
-  return (
-    <label className="form-field">
-
-      <span className="form-label">
-        {label}
-      </span>
-
-      {children}
-
-      {
-        help && (
-          <small>
-            {help}
-          </small>
-        )
-      }
-
-    </label>
-  );
-}
-
-
-function RatePlanForm({
-  form,
-  setForm,
-  properties,
-  roomTypes,
-  editing,
-  onPropertyChange,
-  onRoomTypeChange,
-}) {
-  const availableRoomTypes =
-    roomTypes.filter(
-      (roomType) =>
-        roomType.propertyId ===
-        form.propertyId
-    );
-
-
-  function patch(
-    key,
-    value
-  ) {
-    setForm(
-      (current) => ({
-        ...current,
-
-        [key]:
-          value,
-      })
-    );
-  }
-
-
-  return (
-    <>
-      <div className="form-section-title">
-        1. Khách sạn & Room Type
-      </div>
-
-
-      <div className="form-grid">
-
-        <Field
-          label="Khách sạn (Property) *"
-          help="Rate Plan thuộc về một Property."
-        >
-
-          <select
-            value={
-              form.propertyId
-            }
-
-            disabled={
-              editing
-            }
-
-            onChange={
-              (event) =>
-                onPropertyChange(
-                  event.target.value
-                )
-            }
-          >
-
-            {
-              properties.map(
-                (property) => (
-
-                  <option
-                    key={
-                      property.id
-                    }
-                    value={
-                      property.id
-                    }
-                  >
-                    {
-                      property.name
-                    }
-                    {" "}
-                    (
-                    {
-                      property.code
-                    }
-                    )
-                  </option>
-
-                )
-              )
-            }
-
-          </select>
-
-        </Field>
-
-
-        <Field
-          label="Loại phòng (Room Type) *"
-          help="Rate Plan được áp dụng cho Room Type này."
-        >
-
-          <select
-            value={
-              form.roomTypeId
-            }
-
-            onChange={
-              (event) =>
-                onRoomTypeChange(
-                  event.target.value
-                )
-            }
-          >
-
-            {
-              availableRoomTypes.map(
-                (roomType) => (
-
-                  <option
-                    key={
-                      roomType.id
-                    }
-                    value={
-                      roomType.id
-                    }
-                  >
-                    {
-                      roomType.name
-                    }
-                    {" "}
-                    (
-                    {
-                      roomType.code
-                    }
-                    )
-                  </option>
-
-                )
-              )
-            }
-
-          </select>
-
-        </Field>
-
-      </div>
-
-
-      <div className="form-section-title">
-        2. Thông tin Rate Plan
-      </div>
-
-
-      <div className="form-grid">
-
-        <Field
-          label="Tên Rate Plan *"
-          help="Ví dụ: BAR, Room Only, Breakfast Included."
-        >
-
-          <input
-            value={
-              form.name
-            }
-
-            onChange={
-              (event) =>
-                patch(
-                  "name",
-                  event.target.value
-                )
-            }
-
-            placeholder="Ví dụ: BAR"
-          />
-
-        </Field>
-
-
-        <Field
-          label="Mã Rate Plan *"
-          help="Mã nội bộ dùng để vận hành và mapping."
-        >
-
-          <input
-            value={
-              form.code
-            }
-
-            disabled={
-              editing
-            }
-
-            onChange={
-              (event) =>
-                patch(
-                  "code",
-                  event.target.value
-                    .toUpperCase()
-                )
-            }
-
-            placeholder="Ví dụ: BAR"
-          />
-
-        </Field>
-
-      </div>
-
-
-      <div className="form-section-title">
-        3. Giá & điều kiện bán
-      </div>
-
-
-      <div className="form-grid">
-
-        <Field
-          label="Base Rate"
-          help="Giá cơ sở của Rate Plan."
-        >
-
-          <div className="input-suffix">
-
-            <input
-              type="number"
-
-              min="0"
-
+            <select
               value={
-                form.baseRate
+                form.propertyId
               }
 
               onChange={
                 (event) =>
-                  patch(
-                    "baseRate",
+                  handlePropertyChange(
                     event.target.value
                   )
               }
-            />
+            >
+              <option value="">
+                Chọn Property
+              </option>
 
-            <span>
-              VND
+
+              {
+                properties.map(
+                  (property) => (
+
+                    <option
+                      key={
+                        property.id
+                      }
+
+                      value={
+                        property.id
+                      }
+                    >
+                      {
+                        property.name
+                      }
+                    </option>
+
+                  )
+                )
+              }
+
+            </select>
+
+          </label>
+
+
+          <label className="form-field">
+
+            <span className="form-label">
+              Room Type *
             </span>
 
-          </div>
 
-        </Field>
+            <select
+              value={
+                form.roomTypeId
+              }
+
+              disabled={
+                !form.propertyId
+              }
+
+              onChange={
+                (event) =>
+                  setForm(
+                    (current) => ({
+                      ...current,
+
+                      roomTypeId:
+                        event.target.value,
+                    })
+                  )
+              }
+            >
+              <option value="">
+                Chọn Room Type
+              </option>
 
 
-        <Field
-          label="Minimum Stay"
-          help="Số đêm tối thiểu khách phải đặt."
-        >
+              {
+                formRoomTypes.map(
+                  (roomType) => (
 
-          <div className="input-suffix">
+                    <option
+                      key={
+                        roomType.id
+                      }
+
+                      value={
+                        roomType.id
+                      }
+                    >
+                      {
+                        roomType.name
+                      }
+                    </option>
+
+                  )
+                )
+              }
+
+            </select>
+
+          </label>
+
+        </div>
+
+
+        {/* ===============================================
+            RATE PLAN INFO
+        =============================================== */}
+
+        <div className="form-section-title">
+          Rate Plan Information
+        </div>
+
+
+        <div className="form-grid">
+
+          <label className="form-field">
+
+            <span className="form-label">
+              Tên Rate Plan *
+            </span>
+
+
+            <input
+              value={
+                form.name
+              }
+
+              onChange={
+                (event) =>
+                  setForm(
+                    (current) => ({
+                      ...current,
+
+                      name:
+                        event.target.value,
+                    })
+                  )
+              }
+
+              placeholder="Ví dụ: Website Direct"
+            />
+
+          </label>
+
+
+          <label className="form-field">
+
+            <span className="form-label">
+              Code *
+            </span>
+
+
+            <input
+              value={
+                form.code
+              }
+
+              onChange={
+                (event) =>
+                  setForm(
+                    (current) => ({
+                      ...current,
+
+                      code:
+                        event.target.value,
+                    })
+                  )
+              }
+
+              placeholder="WEB-DIRECT"
+            />
+
+          </label>
+
+
+          {/* =============================================
+              SALES CHANNEL
+          ============================================= */}
+
+          <label className="form-field">
+
+            <span className="form-label">
+              Kênh bán *
+            </span>
+
+
+            <select
+              value={
+                form.salesChannel
+              }
+
+              onChange={
+                (event) =>
+                  handleSalesChannelChange(
+                    event.target.value
+                  )
+              }
+            >
+              <option value="Website Direct">
+                Website Direct
+              </option>
+
+              <option value="OTA">
+                OTA / Channex
+              </option>
+
+              <option value="Front Desk">
+                Front Desk / Walk-in
+              </option>
+
+            </select>
+
+
+            <small>
+              Xác định Rate Plan này được bán trên kênh nào.
+            </small>
+
+          </label>
+
+
+          {/* =============================================
+              RATE POLICY
+          ============================================= */}
+
+          <label className="form-field">
+
+            <span className="form-label">
+              Rate Policy
+            </span>
+
+
+            <select
+              value={
+                form.ratePolicy
+              }
+
+              onChange={
+                (event) =>
+                  setForm(
+                    (current) => ({
+                      ...current,
+
+                      ratePolicy:
+                        event.target.value,
+                    })
+                  )
+              }
+            >
+              <option value="Room Only">
+                Room Only
+              </option>
+
+              <option value="Breakfast Included">
+                Breakfast Included
+              </option>
+
+              <option value="Flexible">
+                Flexible
+              </option>
+
+              <option value="Non-refundable">
+                Non-refundable
+              </option>
+
+              <option value="Other">
+                Other
+              </option>
+
+            </select>
+
+
+            <small>
+              Chính sách bán khác với kênh bán.
+            </small>
+
+          </label>
+
+        </div>
+
+
+        {/* ===============================================
+            PRICE
+        =============================================== */}
+
+        <div className="form-section-title">
+          Price & Restriction
+        </div>
+
+
+        <div className="form-grid">
+
+          <label className="form-field">
+
+            <span className="form-label">
+              Base Rate *
+            </span>
+
+
+            <div className="input-suffix">
+
+              <input
+                type="number"
+
+                min="0"
+
+                value={
+                  form.baseRate
+                }
+
+                onChange={
+                  (event) =>
+                    setForm(
+                      (current) => ({
+                        ...current,
+
+                        baseRate:
+                          event.target.value,
+                      })
+                    )
+                }
+
+                placeholder="1150000"
+              />
+
+
+              <span>
+                VND
+              </span>
+
+            </div>
+
+
+            <small>
+              Giá này là giá nền. Rate Calendar có thể thay đổi theo ngày.
+            </small>
+
+          </label>
+
+
+          <label className="form-field">
+
+            <span className="form-label">
+              Minimum Stay
+            </span>
+
 
             <input
               type="number"
@@ -2342,434 +2574,389 @@ function RatePlanForm({
 
               onChange={
                 (event) =>
-                  patch(
-                    "minimumStay",
-                    event.target.value
+                  setForm(
+                    (current) => ({
+                      ...current,
+
+                      minimumStay:
+                        event.target.value,
+                    })
                   )
               }
             />
 
+
+            <small>
+              Số đêm tối thiểu khách phải đặt.
+            </small>
+
+          </label>
+
+        </div>
+
+
+        {/* ===============================================
+            CHANNEL PREVIEW
+        =============================================== */}
+
+        <div className="rate-plan-summary">
+
+          <div className="rate-plan-summary-item">
+
             <span>
-              đêm
+              Sales Channel
             </span>
 
+
+            <strong>
+              {
+                form.salesChannel
+              }
+            </strong>
+
           </div>
 
-        </Field>
 
-      </div>
+          <div className="rate-plan-summary-item">
+
+            <span>
+              Base Rate
+            </span>
 
 
-      <div className="rate-plan-stop-sell">
+            <strong>
+              {
+                form.baseRate
+                  ? money(
+                      form.baseRate
+                    )
+                  : "—"
+              }
+            </strong>
 
-        <div>
+          </div>
 
-          <strong>
-            Stop Sell
-          </strong>
 
-          <p>
-            Bật tùy chọn này nếu muốn ngừng bán
-            toàn bộ Rate Plan.
-          </p>
+          <div className="rate-plan-summary-item">
+
+            <span>
+              Distribution
+            </span>
+
+
+            <strong>
+              {
+                form.salesChannel ===
+                "OTA"
+                  ? "Channex → OTA"
+                  : form.salesChannel ===
+                      "Website Direct"
+                    ? "CITYHOUSE Website"
+                    : "PMS Internal"
+              }
+            </strong>
+
+          </div>
 
         </div>
 
 
-        <label className="switch">
+        {/* ===============================================
+            STOP SELL
+        =============================================== */}
 
-          <input
-            type="checkbox"
+        <div className="rate-plan-stop-sell">
 
-            checked={
-              form.stopSell
-            }
+          <div>
 
-            onChange={
-              (event) =>
-                patch(
-                  "stopSell",
-                  event.target.checked
-                )
-            }
-          />
-
-          <span className="switch-slider" />
-
-        </label>
-
-      </div>
+            <strong>
+              Stop Sell
+            </strong>
 
 
-      <div className="info-note roomtype-note">
+            <p>
+              Đóng bán Rate Plan này nhưng vẫn giữ lại dữ liệu,
+              lịch giá và lịch sử Reservation.
+            </p>
 
-        <strong>
-          Bước tiếp theo
-        </strong>
-
-        <p>
-          Base Rate và Minimum Stay ở đây là cấu hình
-          mặc định. Bước 05 — Rate Calendar sẽ cho phép
-          thay đổi giá, Minimum Stay và Stop Sell
-          theo từng ngày.
-        </p>
-
-      </div>
-
-    </>
-  );
-}
-
-
-function RatePlanDetail({
-  ratePlan,
-  property,
-  roomType,
-  onEdit,
-  onMapping,
-}) {
-  return (
-    <>
-      <div className="badge-row">
-
-        <StopSellBadge
-          stopSell={
-            ratePlan.stopSell
-          }
-        />
-
-        <MappingBadge
-          mapped={
-            ratePlan.mapped
-          }
-        />
-
-      </div>
-
-
-      <div className="detail-section-title">
-        Thông tin Rate Plan
-      </div>
-
-
-      <div className="detail-grid">
-
-        <Detail
-          label="Khách sạn"
-          value={
-            property?.name ||
-            "—"
-          }
-        />
-
-        <Detail
-          label="Room Type"
-          value={
-            roomType?.name ||
-            "—"
-          }
-        />
-
-        <Detail
-          label="Tên Rate Plan"
-          value={
-            ratePlan.name
-          }
-        />
-
-        <Detail
-          label="Mã Rate Plan"
-          value={
-            ratePlan.code
-          }
-          mono
-        />
-
-        <Detail
-          label="Base Rate"
-          value={
-            money(
-              ratePlan.baseRate
-            )
-          }
-        />
-
-        <Detail
-          label="Minimum Stay"
-          value={
-            `${ratePlan.minimumStay} đêm`
-          }
-        />
-
-      </div>
-
-
-      <div className="detail-section-title">
-        Trạng thái bán
-      </div>
-
-
-      <div className="detail-box">
-
-        <div>
-
-          <div className="detail-label">
-            Stop Sell
           </div>
 
-          <StopSellBadge
-            stopSell={
-              ratePlan.stopSell
-            }
-          />
+
+          <label className="switch">
+
+            <input
+              type="checkbox"
+
+              checked={
+                form.stopSell
+              }
+
+              onChange={
+                (event) =>
+                  setForm(
+                    (current) => ({
+                      ...current,
+
+                      stopSell:
+                        event.target.checked,
+                    })
+                  )
+              }
+            />
+
+
+            <span className="switch-slider" />
+
+          </label>
 
         </div>
 
-      </div>
 
+        {/* ===============================================
+            CHANNEX
 
-      <div className="detail-section-title">
-        Channex Mapping
-      </div>
-
-
-      <div className="detail-box">
-
-        <Detail
-          label="PMS Rate Plan ID"
-          value={
-            `PMS-${
-              property?.code ||
-              "PROPERTY"
-            }-${
-              roomType?.code ||
-              "ROOM"
-            }-${
-              ratePlan.code
-            }`
-          }
-          mono
-        />
-
-        <Detail
-          label="Channex Rate Plan ID"
-          value={
-            ratePlan.channexRatePlanId ||
-            "Chưa mapping"
-          }
-          mono
-        />
-
-        <Detail
-          label="Lần kiểm tra gần nhất"
-          value={
-            ratePlan.lastSync ||
-            "—"
-          }
-        />
-
-      </div>
-
-
-      <div className="detail-section-title">
-        Lịch sử thao tác
-      </div>
-
-
-      <div className="timeline">
+            Chỉ show nếu OTA
+        =============================================== */}
 
         {
-          (
-            ratePlan.logs ||
-            []
-          ).map(
-            (
-              log,
-              index
-            ) => (
+          form.salesChannel ===
+            "OTA" && (
 
-              <div
-                className="timeline-item"
-                key={
-                  `${log}-${index}`
-                }
-              >
-                {log}
+            <>
+
+              <div className="form-section-title">
+                Channex Distribution
               </div>
 
-            )
+
+              <div className="info-note">
+
+                <strong>
+                  OTA Rate Plan
+                </strong>
+
+
+                <p>
+                  Rate Plan OTA có thể được map với Channex.
+                  Sau khi mapping, Rate Calendar có thể đẩy
+                  giá và Restriction sang Booking.com,
+                  Agoda và các OTA được kết nối.
+                </p>
+
+              </div>
+
+
+              <label className="form-field">
+
+                <span className="form-label">
+                  Channex Rate Plan ID
+                </span>
+
+
+                <input
+                  value={
+                    form.channexRatePlanId
+                  }
+
+                  onChange={
+                    (event) =>
+                      setForm(
+                        (current) => ({
+                          ...current,
+
+                          channexRatePlanId:
+                            event.target.value,
+                        })
+                      )
+                  }
+
+                  placeholder="Ví dụ: chx-rate-co-std-ota-001"
+                />
+
+
+                <small>
+                  Có thể để trống và mapping ở module Channex sau.
+                </small>
+
+              </label>
+
+            </>
+
           )
         }
 
-      </div>
+
+        {/* ===============================================
+            DIRECT WEBSITE NOTE
+        =============================================== */}
+
+        {
+          form.salesChannel ===
+            "Website Direct" && (
+
+            <div className="info-note status-note">
+
+              <strong>
+                Website Direct
+              </strong>
 
 
-      <div className="drawer-actions">
+              <p>
+                Rate Plan này dành cho hệ thống booking trực tiếp
+                của CITYHOUSE. Không bắt buộc phải mapping Channex.
+                Website có thể lấy Rate Calendar trực tiếp từ PMS.
+              </p>
 
-        <button
-          className="button button-dark"
-          onClick={
-            onEdit
-          }
-        >
-          <Pencil size={16} />
+            </div>
 
-          Chỉnh sửa Rate Plan
-        </button>
+          )
+        }
 
 
-        <button
-          className="button button-light"
-          onClick={
-            onMapping
-          }
-        >
-          <Link2 size={16} />
+        {/* ===============================================
+            FRONT DESK NOTE
+        =============================================== */}
 
-          Quản lý Channex Mapping
-        </button>
+        {
+          form.salesChannel ===
+            "Front Desk" && (
 
-      </div>
+            <div className="info-note status-note">
 
-    </>
-  );
-}
+              <strong>
+                Front Desk / Walk-in
+              </strong>
 
 
-function RatePlanMapping({
-  ratePlan,
-  property,
-  roomType,
-  mappingValue,
-  setMappingValue,
-}) {
-  return (
-    <>
-      <div className="info-note">
+              <p>
+                Rate Plan này dùng nội bộ cho lễ tân,
+                Reservation, Phone Booking hoặc Walk-in.
+                Không phân phối ra OTA.
+              </p>
 
-        <strong>
-          Rate Plan Mapping là gì?
-        </strong>
+            </div>
 
-        <p>
-          Liên kết Rate Plan trong CITYHOUSE PMS
-          với đúng Rate Plan tương ứng trên Channex
-          để chuẩn bị đồng bộ giá và restriction.
-        </p>
+          )
+        }
 
-      </div>
-
-
-      <div className="form-grid single">
-
-        <Field
-          label="PMS Rate Plan ID"
-        >
-
-          <input
-            value={
-              `PMS-${
-                property?.code ||
-                "PROPERTY"
-              }-${
-                roomType?.code ||
-                "ROOM"
-              }-${
-                ratePlan.code
-              }`
-            }
-            readOnly
-          />
-
-        </Field>
-
-
-        <Field
-          label="Channex Rate Plan ID"
-          help="Nhập ID Rate Plan tương ứng từ Channex."
-        >
-
-          <input
-            value={
-              mappingValue
-            }
-
-            onChange={
-              (event) =>
-                setMappingValue(
-                  event.target.value
-                )
-            }
-
-            placeholder="Nhập Channex Rate Plan ID"
-          />
-
-        </Field>
-
-      </div>
-
-
-      <div className="connection-grid">
-
-        <div>
-
-          <span>
-            Trạng thái mapping
-          </span>
-
-          <MappingBadge
-            mapped={
-              ratePlan.mapped
-            }
-          />
-
-        </div>
-
-
-        <div>
-
-          <span>
-            Lần kiểm tra gần nhất
-          </span>
-
-          <strong>
-            {
-              ratePlan.lastSync ||
-              "—"
-            }
-          </strong>
-
-        </div>
-
-      </div>
+      </Modal>
 
     </>
   );
 }
 
 
-function Detail({
+/* =====================================================
+   METRIC
+===================================================== */
+
+function Metric({
   label,
   value,
-  mono = false,
 }) {
   return (
-    <div>
+    <article className="metric-card">
 
-      <div className="detail-label">
+      <div className="metric-label">
         {label}
       </div>
 
-      <div
-        className={`detail-value ${
-          mono
-            ? "code"
-            : ""
-        }`}
-      >
+
+      <div className="metric-value">
         {value}
       </div>
 
-    </div>
+    </article>
+  );
+}
+
+
+/* =====================================================
+   CHANNEL CARD
+===================================================== */
+
+function ChannelCard({
+  icon,
+  title,
+  code,
+  description,
+  example,
+  status,
+}) {
+  return (
+    <article className="rate-plan-summary-item">
+
+      <div className="business-item-top">
+
+        <span>
+          {code}
+        </span>
+
+        {icon}
+
+      </div>
+
+
+      <strong
+        style={{
+          display:
+            "block",
+
+          marginTop:
+            10,
+
+          fontSize:
+            14,
+        }}
+      >
+        {title}
+      </strong>
+
+
+      <p
+        style={{
+          margin:
+            "6px 0 0",
+
+          color:
+            "#667085",
+
+          fontSize:
+            11,
+
+          lineHeight:
+            1.55,
+        }}
+      >
+        {description}
+      </p>
+
+
+      <div
+        style={{
+          marginTop:
+            12,
+        }}
+      >
+
+        <span className="status-badge status-neutral">
+          {example}
+        </span>
+
+      </div>
+
+
+      <div
+        style={{
+          marginTop:
+            7,
+        }}
+      >
+        <span className="small-copy muted">
+          {status}
+        </span>
+      </div>
+
+    </article>
   );
 }

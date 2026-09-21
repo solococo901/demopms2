@@ -1,12 +1,5 @@
-import ModulePlaceholder from "@/components/ModulePlaceholder";
+import ReportsManager from "@/components/ReportsManager";
 
-export default function Page() {
-  return (
-    <ModulePlaceholder
-      step="19"
-      title="Báo cáo"
-      english="Reports"
-      description="Báo cáo booking, thanh toán, doanh thu và công suất phòng."
-    />
-  );
+export default function ReportsPage() {
+  return <ReportsManager />;
 }

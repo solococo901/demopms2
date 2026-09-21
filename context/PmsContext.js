@@ -22,7 +22,7 @@ const PmsContext =
 
 
 /* =====================================================
-   FOLIO HELPERS
+   FINANCIAL HELPERS
 ===================================================== */
 
 function calculateFolioCharges(
@@ -82,9 +82,71 @@ function calculateReservationPayments(
 }
 
 
+function calculateReservationRefunds(
+  reservationId,
+  refunds
+) {
+  return (
+    refunds ||
+    []
+  )
+    .filter(
+      (refund) =>
+        refund.reservationId ===
+          reservationId &&
+        ![
+          "Voided",
+          "Cancelled",
+        ].includes(
+          refund.status
+        )
+    )
+    .reduce(
+      (
+        total,
+        refund
+      ) =>
+        total +
+        Number(
+          refund.amount ||
+          0
+        ),
+      0
+    );
+}
+
+
+function calculateNetPayments(
+  reservationId,
+  payments,
+  refunds
+) {
+  const grossPaid =
+    calculateReservationPayments(
+      reservationId,
+      payments
+    );
+
+
+  const refunded =
+    calculateReservationRefunds(
+      reservationId,
+      refunds
+    );
+
+
+  return Math.max(
+    grossPaid -
+      refunded,
+    0
+  );
+}
+
+
 function calculateOutstanding(
   folio,
-  payments
+  payments,
+  refunds
 ) {
   if (
     !folio
@@ -99,17 +161,148 @@ function calculateOutstanding(
     );
 
 
-  const paid =
+  const netPaid =
+    calculateNetPayments(
+      folio.reservationId,
+      payments,
+      refunds
+    );
+
+
+  return Math.max(
+    charges -
+      netPaid,
+    0
+  );
+}
+
+
+function calculatePaymentStatus(
+  folio,
+  payments,
+  refunds
+) {
+  if (
+    !folio
+  ) {
+    return "Unpaid";
+  }
+
+
+  const charges =
+    calculateFolioCharges(
+      folio
+    );
+
+
+  const grossPaid =
     calculateReservationPayments(
       folio.reservationId,
       payments
     );
 
 
-  return Math.max(
-    charges -
-      paid,
-    0
+  const refunded =
+    calculateReservationRefunds(
+      folio.reservationId,
+      refunds
+    );
+
+
+  const netPaid =
+    Math.max(
+      grossPaid -
+        refunded,
+      0
+    );
+
+
+  if (
+    grossPaid >
+      0 &&
+    refunded >=
+      grossPaid
+  ) {
+    return "Refunded";
+  }
+
+
+  if (
+    grossPaid <=
+      0
+  ) {
+    return "Unpaid";
+  }
+
+
+  if (
+    charges >
+      0 &&
+    netPaid >=
+      charges
+  ) {
+    return "Paid";
+  }
+
+
+  return "Partial";
+}
+
+
+/* =====================================================
+   ARRAY MERGE HELPER
+
+   Giữ dữ liệu user đang có trong localStorage
+   và bổ sung dữ liệu demo mới từ defaultData.
+
+   Không overwrite record đã tồn tại cùng ID.
+===================================================== */
+
+function mergeById(
+  currentItems,
+  defaultItems
+) {
+  const map =
+    new Map(
+      (
+        Array.isArray(
+          currentItems
+        )
+          ? currentItems
+          : []
+      ).map(
+        (item) => [
+          item.id,
+          item,
+        ]
+      )
+    );
+
+
+  (
+    Array.isArray(
+      defaultItems
+    )
+      ? defaultItems
+      : []
+  ).forEach(
+    (item) => {
+      if (
+        !map.has(
+          item.id
+        )
+      ) {
+        map.set(
+          item.id,
+          item
+        );
+      }
+    }
+  );
+
+
+  return Array.from(
+    map.values()
   );
 }
 
@@ -301,47 +494,40 @@ function migrateData(
   if (
     currentVersion < 10
   ) {
-    if (
-      Array.isArray(
-        merged.reservations
-      )
-    ) {
-      merged.reservations =
-        merged.reservations.map(
-          (reservation) =>
-            reservation.id ===
-            "reservation_000002"
-              ? {
-                  ...reservation,
+    merged.reservations =
+      (
+        merged.reservations ||
+        []
+      ).map(
+        (reservation) =>
+          reservation.id ===
+          "reservation_000002"
+            ? {
+                ...reservation,
 
-                  checkin:
-                    reservation.checkin ===
-                    "2026-09-21"
-                      ? "2026-09-20"
-                      : reservation.checkin,
+                checkin:
+                  reservation.checkin ===
+                  "2026-09-21"
+                    ? "2026-09-20"
+                    : reservation.checkin,
 
-                  checkout:
-                    reservation.checkout ===
-                    "2026-09-22"
-                      ? "2026-09-21"
-                      : reservation.checkout,
+                checkout:
+                  reservation.checkout ===
+                  "2026-09-22"
+                    ? "2026-09-21"
+                    : reservation.checkout,
 
-                  checkedInAt:
-                    reservation.checkedInAt ||
-                    "20/09/2026 14:05",
+                checkedInAt:
+                  reservation.checkedInAt ||
+                  "20/09/2026 14:05",
 
-                  outstandingBalance:
-                    reservation.outstandingBalance ??
-                    0,
-                }
-              : reservation
-        );
-    }
+                outstandingBalance:
+                  reservation.outstandingBalance ??
+                  0,
+              }
+            : reservation
+      );
 
-
-    /* ===============================================
-       RESERVATION 000006
-    =============================================== */
 
     const defaultReservation6 =
       DEFAULT_PMS_DATA.reservations?.find(
@@ -351,38 +537,27 @@ function migrateData(
       );
 
 
-    const hasReservation6 =
-      Array.isArray(
-        merged.reservations
-      ) &&
-      merged.reservations.some(
+    if (
+      defaultReservation6 &&
+      !(
+        merged.reservations ||
+        []
+      ).some(
         (reservation) =>
           reservation.id ===
           "reservation_000006"
-      );
-
-
-    if (
-      !hasReservation6 &&
-      defaultReservation6
+      )
     ) {
       merged.reservations = [
         ...(
-          Array.isArray(
-            merged.reservations
-          )
-            ? merged.reservations
-            : []
+          merged.reservations ||
+          []
         ),
 
         defaultReservation6,
       ];
     }
 
-
-    /* ===============================================
-       ASSIGNMENT 000006
-    =============================================== */
 
     const defaultAssignment6 =
       DEFAULT_PMS_DATA.roomAssignments?.find(
@@ -392,28 +567,21 @@ function migrateData(
       );
 
 
-    const hasAssignment6 =
-      Array.isArray(
-        merged.roomAssignments
-      ) &&
-      merged.roomAssignments.some(
+    if (
+      defaultAssignment6 &&
+      !(
+        merged.roomAssignments ||
+        []
+      ).some(
         (assignment) =>
           assignment.id ===
           "assignment_res_000006"
-      );
-
-
-    if (
-      !hasAssignment6 &&
-      defaultAssignment6
+      )
     ) {
       merged.roomAssignments = [
         ...(
-          Array.isArray(
-            merged.roomAssignments
-          )
-            ? merged.roomAssignments
-            : []
+          merged.roomAssignments ||
+          []
         ),
 
         defaultAssignment6,
@@ -421,48 +589,41 @@ function migrateData(
     }
 
 
-    /* ===============================================
-       OCCUPIED ROOMS
-    =============================================== */
+    merged.physicalRooms =
+      (
+        merged.physicalRooms ||
+        []
+      ).map(
+        (room) => {
+          if (
+            room.id ===
+            "room_co_305"
+          ) {
+            return {
+              ...room,
 
-    if (
-      Array.isArray(
-        merged.physicalRooms
-      )
-    ) {
-      merged.physicalRooms =
-        merged.physicalRooms.map(
-          (room) => {
-            if (
-              room.id ===
-              "room_co_305"
-            ) {
-              return {
-                ...room,
-
-                occupancyStatus:
-                  "Occupied",
-              };
-            }
-
-
-            if (
-              room.id ===
-              "room_nm_802"
-            ) {
-              return {
-                ...room,
-
-                occupancyStatus:
-                  "Occupied",
-              };
-            }
-
-
-            return room;
+              occupancyStatus:
+                "Occupied",
+            };
           }
-        );
-    }
+
+
+          if (
+            room.id ===
+            "room_nm_802"
+          ) {
+            return {
+              ...room,
+
+              occupancyStatus:
+                "Occupied",
+            };
+          }
+
+
+          return room;
+        }
+      );
   }
 
 
@@ -473,58 +634,47 @@ function migrateData(
   if (
     currentVersion < 11
   ) {
-    /* ===============================================
-       COMPATIBILITY — RES 000002
-    =============================================== */
+    merged.reservations =
+      (
+        merged.reservations ||
+        []
+      ).map(
+        (reservation) => {
+          if (
+            reservation.id ===
+              "reservation_000002" &&
+            reservation.checkin ===
+              "2026-09-21" &&
+            reservation.checkout ===
+              "2026-09-22"
+          ) {
+            return {
+              ...reservation,
 
-    if (
-      Array.isArray(
-        merged.reservations
-      )
-    ) {
-      merged.reservations =
-        merged.reservations.map(
-          (reservation) => {
-            if (
-              reservation.id ===
-                "reservation_000002" &&
-              reservation.checkin ===
-                "2026-09-21" &&
-              reservation.checkout ===
-                "2026-09-22"
-            ) {
-              return {
-                ...reservation,
+              checkin:
+                "2026-09-20",
 
-                checkin:
-                  "2026-09-20",
+              checkout:
+                "2026-09-21",
 
-                checkout:
-                  "2026-09-21",
+              nights:
+                1,
 
-                nights:
-                  1,
+              checkedInAt:
+                reservation.checkedInAt ||
+                "20/09/2026 14:05",
 
-                checkedInAt:
-                  reservation.checkedInAt ||
-                  "20/09/2026 14:05",
-
-                outstandingBalance:
-                  reservation.outstandingBalance ??
-                  0,
-              };
-            }
-
-
-            return reservation;
+              outstandingBalance:
+                reservation.outstandingBalance ??
+                0,
+            };
           }
-        );
-    }
 
 
-    /* ===============================================
-       ROOM 307
-    =============================================== */
+          return reservation;
+        }
+      );
+
 
     const defaultRoom307 =
       DEFAULT_PMS_DATA.physicalRooms?.find(
@@ -534,38 +684,27 @@ function migrateData(
       );
 
 
-    const hasRoom307 =
-      Array.isArray(
-        merged.physicalRooms
-      ) &&
-      merged.physicalRooms.some(
+    if (
+      defaultRoom307 &&
+      !(
+        merged.physicalRooms ||
+        []
+      ).some(
         (room) =>
           room.id ===
           "room_co_307"
-      );
-
-
-    if (
-      !hasRoom307 &&
-      defaultRoom307
+      )
     ) {
       merged.physicalRooms = [
         ...(
-          Array.isArray(
-            merged.physicalRooms
-          )
-            ? merged.physicalRooms
-            : []
+          merged.physicalRooms ||
+          []
         ),
 
         defaultRoom307,
       ];
     }
 
-
-    /* ===============================================
-       ROOM MOVE HISTORY
-    =============================================== */
 
     const defaultRoomMove =
       DEFAULT_PMS_DATA.roomMoves?.find(
@@ -575,41 +714,25 @@ function migrateData(
       );
 
 
-    const hasRoomMove =
-      Array.isArray(
-        merged.roomMoves
-      ) &&
-      merged.roomMoves.some(
+    if (
+      defaultRoomMove &&
+      !(
+        merged.roomMoves ||
+        []
+      ).some(
         (move) =>
           move.id ===
           "roommove_res_000006_001"
-      );
-
-
-    if (
-      !hasRoomMove &&
-      defaultRoomMove
+      )
     ) {
       merged.roomMoves = [
         ...(
-          Array.isArray(
-            merged.roomMoves
-          )
-            ? merged.roomMoves
-            : []
+          merged.roomMoves ||
+          []
         ),
 
         defaultRoomMove,
       ];
-    }
-
-
-    if (
-      !Array.isArray(
-        merged.roomMoves
-      )
-    ) {
-      merged.roomMoves = [];
     }
   }
 
@@ -633,101 +756,46 @@ function migrateData(
     }
 
 
-    if (
-      !Array.isArray(
-        merged.housekeeping
-      )
-    ) {
-      merged.housekeeping = [];
-    }
-
-
     merged.physicalRooms =
       (
         merged.physicalRooms ||
         []
       ).map(
         (room) => {
+          const defaults = {
+            room_co_201:
+              "Clean",
+
+            room_co_202:
+              "Dirty",
+
+            room_co_305:
+              "Inspected",
+
+            room_co_307:
+              "Clean",
+
+            room_nm_801:
+              "Cleaning",
+
+            room_nm_802:
+              "Clean",
+          };
+
+
           if (
-            room.id ===
-              "room_co_201" &&
-            !room.housekeepingStatus
+            !room.housekeepingStatus &&
+            defaults[
+              room.id
+            ]
           ) {
             return {
               ...room,
 
               housekeepingStatus:
-                "Clean",
-            };
-          }
-
-
-          if (
-            room.id ===
-              "room_co_202" &&
-            !room.housekeepingStatus
-          ) {
-            return {
-              ...room,
-
-              housekeepingStatus:
-                "Dirty",
-            };
-          }
-
-
-          if (
-            room.id ===
-              "room_co_305" &&
-            !room.housekeepingStatus
-          ) {
-            return {
-              ...room,
-
-              housekeepingStatus:
-                "Inspected",
-            };
-          }
-
-
-          if (
-            room.id ===
-              "room_co_307" &&
-            !room.housekeepingStatus
-          ) {
-            return {
-              ...room,
-
-              housekeepingStatus:
-                "Clean",
-            };
-          }
-
-
-          if (
-            room.id ===
-              "room_nm_801" &&
-            !room.housekeepingStatus
-          ) {
-            return {
-              ...room,
-
-              housekeepingStatus:
-                "Cleaning",
-            };
-          }
-
-
-          if (
-            room.id ===
-              "room_nm_802" &&
-            !room.housekeepingStatus
-          ) {
-            return {
-              ...room,
-
-              housekeepingStatus:
-                "Clean",
+                defaults[
+                  room.id
+                ],
             };
           }
 
@@ -745,143 +813,117 @@ function migrateData(
   if (
     currentVersion < 13
   ) {
-    /*
-     * Folio mới được thêm ở Step 13.
-     *
-     * Nếu localStorage chưa có Folio,
-     * seed toàn bộ Folio demo.
-     *
-     * Nếu đã có Folio do user test trước,
-     * chỉ bổ sung những Folio demo còn thiếu.
-     */
-
-
-    const currentFolios =
-      Array.isArray(
-        merged.folios
-      )
-        ? merged.folios
-        : [];
-
-
-    const defaultFolios =
-      Array.isArray(
-        DEFAULT_PMS_DATA.folios
-      )
-        ? DEFAULT_PMS_DATA.folios
-        : [];
-
-
-    const folioMap =
-      new Map(
-        currentFolios.map(
-          (folio) => [
-            folio.id,
-            folio,
-          ]
-        )
-      );
-
-
-    defaultFolios.forEach(
-      (folio) => {
-        if (
-          !folioMap.has(
-            folio.id
-          )
-        ) {
-          folioMap.set(
-            folio.id,
-            folio
-          );
-        }
-      }
-    );
-
-
     merged.folios =
-      Array.from(
-        folioMap.values()
+      mergeById(
+        merged.folios,
+        DEFAULT_PMS_DATA.folios
+      );
+  }
+
+
+  /* ===================================================
+     STEP 14 — PAYMENT
+  =================================================== */
+
+  if (
+    currentVersion < 14
+  ) {
+    merged.payments =
+      mergeById(
+        merged.payments,
+        DEFAULT_PMS_DATA.payments
+      );
+  }
+
+
+  /* ===================================================
+     STEP 15 — REFUND
+  =================================================== */
+
+  if (
+    currentVersion < 15
+  ) {
+    merged.refunds =
+      mergeById(
+        merged.refunds,
+        DEFAULT_PMS_DATA.refunds
+      );
+  }
+
+
+  /* ===================================================
+     STEP 16 — NO-SHOW
+  =================================================== */
+
+  if (
+    currentVersion < 16
+  ) {
+    merged.noShows =
+      mergeById(
+        merged.noShows,
+        DEFAULT_PMS_DATA.noShows
+      );
+
+
+    merged.channelSyncLogs =
+      mergeById(
+        merged.channelSyncLogs,
+        DEFAULT_PMS_DATA.channelSyncLogs
+      );
+  }
+
+
+  /* ===================================================
+     STEP 17 — CHANNEX / CHANNEL DISTRIBUTION
+  =================================================== */
+
+  if (
+    currentVersion < 17
+  ) {
+    /*
+     * 1. Giữ Queue đã được tạo từ Step 16.
+     *
+     * Nếu localStorage schema 16 chưa có
+     * channelSyncLogs thì bổ sung Queue demo
+     * từ DEFAULT_PMS_DATA.
+     */
+
+    merged.channelSyncLogs =
+      mergeById(
+        merged.channelSyncLogs,
+        DEFAULT_PMS_DATA.channelSyncLogs
       );
 
 
     /*
-     * Payments chưa triển khai đến Step 14
-     * nhưng đảm bảo array tồn tại để Folio
-     * có thể tính balance an toàn.
+     * 2. Booking Inbox.
+     *
+     * Booking từ OTA/Channex chưa được import
+     * sẽ nằm trong collection này.
      */
-    if (
-      !Array.isArray(
-        merged.payments
-      )
-    ) {
-      merged.payments = [];
-    }
 
+    merged.channexBookingInbox =
+      mergeById(
+        merged.channexBookingInbox,
+        DEFAULT_PMS_DATA.channexBookingInbox
+      );
 
-    /* ===============================================
-       SYNC OUTSTANDING BALANCE
-    =============================================== */
 
     /*
-     * Outstanding Balance của Reservation
-     * giờ không còn là giá trị demo độc lập.
+     * 3. Sync Result Logs.
      *
-     * Công thức:
+     * Đây là kết quả thực thi:
      *
-     * Active Charges
-     * -
-     * Valid Payments
-     * =
-     * Outstanding Balance
+     * PMS → Channex
+     * Channex → PMS
      *
-     * Charge Voided không được tính.
+     * Success / Failed
      */
 
-
-    merged.reservations =
-      (
-        merged.reservations ||
-        []
-      ).map(
-        (reservation) => {
-          const folio =
-            merged.folios.find(
-              (item) =>
-                item.reservationId ===
-                reservation.id
-            );
-
-
-          /*
-           * Reservation chưa có Folio
-           * thì giữ balance hiện tại.
-           *
-           * Ví dụ:
-           * RES_000002 = 0
-           * để tiếp tục demo Check-out.
-           */
-          if (
-            !folio
-          ) {
-            return reservation;
-          }
-
-
-          const balance =
-            calculateOutstanding(
-              folio,
-              merged.payments
-            );
-
-
-          return {
-            ...reservation,
-
-            outstandingBalance:
-              balance,
-          };
-        }
+    merged.syncLogs =
+      mergeById(
+        merged.syncLogs,
+        DEFAULT_PMS_DATA.syncLogs
       );
   }
 
@@ -889,6 +931,87 @@ function migrateData(
   /* ===================================================
      FALLBACK ARRAYS
   =================================================== */
+
+  if (
+    !Array.isArray(
+      merged.properties
+    )
+  ) {
+    merged.properties = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.roomTypes
+    )
+  ) {
+    merged.roomTypes = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.physicalRooms
+    )
+  ) {
+    merged.physicalRooms = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.ratePlans
+    )
+  ) {
+    merged.ratePlans = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.rateCalendar
+    )
+  ) {
+    merged.rateCalendar = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.inventory
+    )
+  ) {
+    merged.inventory = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.guests
+    )
+  ) {
+    merged.guests = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.reservations
+    )
+  ) {
+    merged.reservations = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.roomAssignments
+    )
+  ) {
+    merged.roomAssignments = [];
+  }
+
 
   if (
     !Array.isArray(
@@ -933,6 +1056,161 @@ function migrateData(
   ) {
     merged.refunds = [];
   }
+
+
+  if (
+    !Array.isArray(
+      merged.noShows
+    )
+  ) {
+    merged.noShows = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.channelSyncLogs
+    )
+  ) {
+    merged.channelSyncLogs = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.channexBookingInbox
+    )
+  ) {
+    merged.channexBookingInbox = [];
+  }
+
+
+  if (
+    !Array.isArray(
+      merged.syncLogs
+    )
+  ) {
+    merged.syncLogs = [];
+  }
+
+
+  /* ===================================================
+     FINANCIAL RE-CALCULATION
+
+     Folio
+       ↓
+     Payments
+       ↓
+     Refunds
+       ↓
+     Net Paid
+       ↓
+     Outstanding
+       ↓
+     Payment Status
+  =================================================== */
+
+  merged.folios =
+    (
+      merged.folios ||
+      []
+    ).map(
+      (folio) => {
+        const balance =
+          calculateOutstanding(
+            folio,
+            merged.payments,
+            merged.refunds
+          );
+
+
+        const status =
+          calculatePaymentStatus(
+            folio,
+            merged.payments,
+            merged.refunds
+          );
+
+
+        return {
+          ...folio,
+
+          paymentStatus:
+            status,
+
+          status:
+            status ===
+            "Paid"
+              ? "Settled"
+              : "Open",
+
+          outstandingBalance:
+            balance,
+        };
+      }
+    );
+
+
+  /* ===================================================
+     RESERVATION FINANCIAL STATUS
+  =================================================== */
+
+  merged.reservations =
+    (
+      merged.reservations ||
+      []
+    ).map(
+      (reservation) => {
+        const folio =
+          (
+            merged.folios ||
+            []
+          ).find(
+            (item) =>
+              item.reservationId ===
+              reservation.id
+          );
+
+
+        /*
+         * Reservation chưa có Folio:
+         * giữ nguyên Outstanding cũ.
+         */
+
+        if (
+          !folio
+        ) {
+          return reservation;
+        }
+
+
+        const balance =
+          calculateOutstanding(
+            folio,
+            merged.payments,
+            merged.refunds
+          );
+
+
+        const status =
+          calculatePaymentStatus(
+            folio,
+            merged.payments,
+            merged.refunds
+          );
+
+
+        return {
+          ...reservation,
+
+          outstandingBalance:
+            balance,
+
+          paymentStatus:
+            status,
+        };
+      }
+    );
 
 
   /* ===================================================
@@ -1003,7 +1281,9 @@ export function PmsProvider({
 
         else {
           setData(
-            DEFAULT_PMS_DATA
+            migrateData(
+              DEFAULT_PMS_DATA
+            )
           );
         }
       }
@@ -1018,7 +1298,9 @@ export function PmsProvider({
 
 
         setData(
-          DEFAULT_PMS_DATA
+          migrateData(
+            DEFAULT_PMS_DATA
+          )
         );
       }
 
@@ -1089,7 +1371,9 @@ export function PmsProvider({
 
         resetDemo() {
           setData(
-            DEFAULT_PMS_DATA
+            migrateData(
+              DEFAULT_PMS_DATA
+            )
           );
         },
       }),

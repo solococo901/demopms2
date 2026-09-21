@@ -1,12 +1,5 @@
-import ModulePlaceholder from "@/components/ModulePlaceholder";
+import RefundManager from "@/components/RefundManager";
 
-export default function Page() {
-  return (
-    <ModulePlaceholder
-      step="15"
-      title="Hoàn tiền"
-      english="Refund"
-      description="Quản lý hoàn tiền một phần hoặc toàn bộ cho khách."
-    />
-  );
+export default function RefundPage() {
+  return <RefundManager />;
 }

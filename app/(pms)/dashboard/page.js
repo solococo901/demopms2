@@ -1,12 +1,5 @@
-import ModulePlaceholder from "@/components/ModulePlaceholder";
+import DashboardManager from "@/components/DashboardManager";
 
-export default function Page() {
-  return (
-    <ModulePlaceholder
-      step="18"
-      title="Tổng quan"
-      english="Dashboard"
-      description="Tổng hợp nhanh tình hình vận hành khách sạn trong ngày."
-    />
-  );
+export default function DashboardPage() {
+  return <DashboardManager />;
 }
